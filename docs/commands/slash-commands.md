@@ -69,10 +69,26 @@ Run a fast health check against the bridge without starting a sandbox.
 
 Shows:
 - Current server time
-- Number of providers loaded from env
+- Number of providers loaded from the stored registry
 - Number of configured providers
 - Whether `GITHUB_TOKEN` is present
 - Whether `DISCORD_BOT_TOKEN` is present
+
+### /update
+
+Refresh the stored provider registry snapshot from `models.dev`.
+
+```
+/update
+```
+
+Behavior:
+- Creates the provider registry gist on first run
+- Updates the existing registry gist on later runs
+- Refreshes the snapshot used by `/providers`, `/models`, `/use-provider`, and `/ask`
+
+Requires:
+- `GITHUB_TOKEN` with `gist` scope
 
 ### /models
 

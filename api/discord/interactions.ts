@@ -460,7 +460,7 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
     { executePromptForChannel },
     { getSandboxManager },
     { getRecoveryContext },
-    { loadProviderRegistryFromEnv },
+    { loadProviderRegistry },
   ] = await Promise.all([
     import("../../src/channel-state-store.js"),
     import("../../src/credential-store.js"),
@@ -468,7 +468,7 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
     import("../../src/prompt-orchestrator.js"),
     import("../../src/sandbox-manager.js"),
     import("../../src/discord-message-fetcher.js"),
-    import("../../src/provider-registry-env.js"),
+    import("../../src/provider-registry-store.js"),
   ])
 
   const channelId = interaction.channel_id
@@ -547,7 +547,7 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
 
   const runtime = new OpencodeRuntime(sandboxContext.opencodeBaseUrl, sandboxContext.opencodePassword)
   const credentials = new CredentialStore()
-  const registry = loadProviderRegistryFromEnv()
+  const registry = await loadProviderRegistry()
 
   // Check if sandbox was newly created (old one expired) - fetch recovery context
   const isNewSandbox = oldSandboxId && oldSandboxId !== sandboxContext.sandboxId
@@ -712,9 +712,8 @@ export default async function handler(
       return
     }
 
-    const [{ mapInteractionCommandToText }, { loadProviderRegistryFromEnv }, { ChannelStateStore }, { CredentialStore }, { handleDiscordCommand }] = await Promise.all([
+    const [{ mapInteractionCommandToText }, { ChannelStateStore }, { CredentialStore }, { handleDiscordCommand }] = await Promise.all([
       import("../../src/interaction-command-mapper.js"),
-      import("../../src/provider-registry-env.js"),
       import("../../src/channel-state-store.js"),
       import("../../src/credential-store.js"),
       import("../../src/discord-command-service.js"),
@@ -738,7 +737,28 @@ export default async function handler(
       return
     }
 
-    const registry = loadProviderRegistryFromEnv()
+    if (mapped.text === "update") {
+      const { refreshProviderRegistry } = await import("../../src/provider-registry-store.js")
+
+      const result = await refreshProviderRegistry()
+      await sendNodeResponse(
+        res,
+        json({
+          type: 4,
+          data: {
+            content:
+              `${result.created ? "Created" : "Updated"} provider registry.\n` +
+              `Providers: ${result.providerCount}\n` +
+              `Models: ${result.modelCount}\n` +
+              `Registry gist: ${result.gistUrl}`,
+          },
+        }),
+      )
+      return
+    }
+
+    const { loadProviderRegistry } = await import("../../src/provider-registry-store.js")
+    const registry = await loadProviderRegistry()
     const stateStore = new ChannelStateStore()
     const credentials = new CredentialStore()
 

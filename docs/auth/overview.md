@@ -66,6 +66,7 @@ If refresh fails (token revoked), run `/auth-connect <provider>` again to re-aut
 GitHub is needed for:
 - Repo/branch listing (`/project select`)
 - Pushing commits from sandbox
+- Storing the provider registry snapshot for `/providers`, `/models`, and `/ask`
 
 Required PAT scopes: `repo`, `read:user`, `gist`
 

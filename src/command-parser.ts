@@ -5,6 +5,7 @@
 export type ParsedCommand =
   | { type: "providers" }
   | { type: "health_check" }
+  | { type: "update" }
   | { type: "models"; providerId?: string }
   | { type: "use_provider"; providerId: string }
   | { type: "use_model"; modelId: string }
@@ -62,6 +63,7 @@ function isLikelyCommandWord(firstWord: string): boolean {
   return [
     "providers",
     "health-check",
+    "update",
     "models",
     "use",
     "auth",
@@ -120,6 +122,13 @@ export function parseDiscordCommand(input: string): ParsedCommand {
       return { type: "invalid", message: "Usage: health-check" }
     }
     return { type: "health_check" }
+  }
+
+  if (lower[0] === "update") {
+    if (tokens.length > 1) {
+      return { type: "invalid", message: "Usage: update" }
+    }
+    return { type: "update" }
   }
 
   if (lower[0] === "models") {
@@ -208,6 +217,7 @@ export function commandHelpText(): string {
     "Commands:",
     "- providers",
     "- health-check",
+    "- update",
     "- models [provider]",
     "- use provider <provider>",
     "- use model <model>",

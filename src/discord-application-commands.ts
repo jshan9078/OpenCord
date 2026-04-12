@@ -43,6 +43,11 @@ export function buildApplicationCommands(): DiscordApplicationCommand[] {
       type: 1,
     },
     {
+      name: "update",
+      description: "Refresh provider registry from models.dev",
+      type: 1,
+    },
+    {
       name: "models",
       description: "List models for active or selected provider",
       type: 1,

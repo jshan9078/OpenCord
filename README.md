@@ -41,7 +41,9 @@ pnpm install
 
 ### 3. Configure Environment Variables
 
-**First**, set these in Vercel dashboard (not locally):
+Set these in your Vercel project first. You can do that either in the Vercel dashboard or with `vercel env add`.
+
+These values live in Vercel and are used by the deployed app:
 
 | Variable | Description |
 |----------|-------------|
@@ -49,6 +51,7 @@ pnpm install
 | `DISCORD_PUBLIC_KEY` | Your Discord public key (hex) |
 | `DISCORD_BOT_TOKEN` | Your Discord bot token (needed for thread creation) |
 | `GITHUB_TOKEN` | GitHub personal access token (needs `repo`, `read:user`, `gist` scopes) |
+| `SESSION_BASE_DIR` | Optional session/config storage path. Recommended for serverless: `/tmp/opencode-chat-bridge` |
 
 **Provider API keys** (optional):
 - `OPENAI_API_KEY`
@@ -59,16 +62,29 @@ pnpm install
 - `OPENCODE_GIST_URL` = URL of a private GitHub gist with your `opencode.jsonc`
 - To create: run `pnpm tsx scripts/bundle-config.ts` (bundles your local OpenCode config into a gist)
 
-Now pull env vars locally and deploy:
+`GITHUB_TOKEN` is also used to store the durable provider registry gist that powers `/providers`, `/models`, and `/ask`.
+
+**Serverless storage** (recommended on Vercel):
+- `SESSION_BASE_DIR=/tmp/opencode-chat-bridge`
+- This avoids sandbox/home-directory write issues for channel state, credentials, and recovery data
+
+After the env vars are set in Vercel, pull a local copy for scripts like `register-commands`:
 
 ```bash
-# Link to Vercel and pull env vars (must be set in dashboard first!)
+# Link this folder to your Vercel project
 vercel link
+
+# Download Vercel env vars into .env.local for local scripts
 vercel env pull
 
-# Deploy
+# Deploy the current code
 vercel deploy --prod
 ```
+
+Notes:
+- Vercel env vars are the source of truth for the deployed app
+- `.env.local` is just a local copy used by scripts in this repo
+- `vercel env pull` does not set remote env vars, it only downloads them locally
 
 ### 4. Register Slash Commands
 
@@ -96,7 +112,18 @@ Discord will verify this URL immediately, so make sure:
 - `DISCORD_PUBLIC_KEY` in Vercel matches the same Discord application
 - the URL uses HTTPS and points to `/api/discord/interactions`
 
-### 6. Set Provider Credentials
+### 6. Initialize Provider Registry
+
+Run this once in Discord after the interactions URL is working:
+
+```text
+/update
+```
+
+This creates or refreshes the stored provider registry snapshot from `models.dev`.
+Run `/update` again any time you want the latest provider/model list.
+
+### 7. Set Provider Credentials
 
 **Option 1: API Keys (env vars)**
 ```bash
@@ -122,6 +149,7 @@ ANTHROPIC_API_KEY=sk-ant-... # Anthropic
 | `/project show` | View current project |
 | `/project clear` | Clear project |
 | `/health-check` | Fast bridge health check |
+| `/update` | Refresh provider registry snapshot |
 | `/providers` | List available providers |
 | `/models` | List available models |
 | `/use-provider <id>` | Switch provider |
