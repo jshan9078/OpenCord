@@ -34,10 +34,25 @@ function json(data: unknown, status = 200): Response {
 }
 
 async function readNodeRequestBody(req: {
+  rawBody?: Buffer | string
+  body?: unknown
   on(event: "data", listener: (chunk: Buffer | string) => void): void
   on(event: "end", listener: () => void): void
   on(event: "error", listener: (error: Error) => void): void
 }): Promise<Buffer> {
+  if (typeof req.rawBody === "string") {
+    return Buffer.from(req.rawBody)
+  }
+  if (Buffer.isBuffer(req.rawBody)) {
+    return req.rawBody
+  }
+  if (typeof req.body === "string") {
+    return Buffer.from(req.body)
+  }
+  if (Buffer.isBuffer(req.body)) {
+    return req.body
+  }
+
   const chunks: Buffer[] = []
   return await new Promise((resolve, reject) => {
     req.on("data", (chunk) => {
@@ -603,6 +618,8 @@ export default async function handler(
   req: {
     method?: string
     url?: string
+    rawBody?: Buffer | string
+    body?: unknown
     headers: Record<string, string | string[] | undefined>
     on(event: "data", listener: (chunk: Buffer | string) => void): void
     on(event: "end", listener: () => void): void
