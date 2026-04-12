@@ -60,6 +60,19 @@ Shows:
 - Whether credentials are configured
 - Paged results with `Prev` / `Next` buttons
 
+### /config
+
+Show your current provider/model selection and authentication status.
+
+```
+/config
+```
+
+Behavior:
+- In a normal channel: shows your user default provider/model
+- In a thread: shows effective thread selection (override or inherited)
+- Indicates whether auth is available via OAuth or API key
+
 ### /health-check
 
 Run a fast health check against the bridge without starting a sandbox.

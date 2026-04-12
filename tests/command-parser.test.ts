@@ -4,6 +4,7 @@ import { parseDiscordCommand } from "../src/command-parser"
 describe("parseDiscordCommand", () => {
   it("parses provider and model commands", () => {
     expect(parseDiscordCommand("providers")).toEqual({ type: "providers" })
+    expect(parseDiscordCommand("config")).toEqual({ type: "config" })
     expect(parseDiscordCommand("models")).toEqual({ type: "models" })
     expect(parseDiscordCommand("use provider openai")).toEqual({
       type: "use_provider",

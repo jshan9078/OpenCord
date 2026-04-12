@@ -494,6 +494,37 @@ function clipEmbedDescription(text: string, limit = 4000): string {
   return text.length > limit ? `${text.slice(0, limit - 3)}...` : text
 }
 
+function stripPromptEcho(text: string, prompt: string): string {
+  const trimmedPrompt = prompt.trim()
+  if (!trimmedPrompt) {
+    return text
+  }
+
+  const trimmedText = text.trimStart()
+  if (!trimmedText.toLowerCase().startsWith(trimmedPrompt.toLowerCase())) {
+    return text
+  }
+
+  const remainder = trimmedText.slice(trimmedPrompt.length)
+  return remainder.replace(/^[\s:,-]+/, "")
+}
+
+function providerEnvCandidates(providerId: string): string[] {
+  const normalized = providerId.toUpperCase().replace(/[^A-Z0-9]/g, "_")
+  const candidates = [`${normalized}_API_KEY`]
+  if (providerId === "google") {
+    candidates.push("GOOGLE_GENERATIVEAI_API_KEY")
+  }
+  return candidates
+}
+
+function hasProviderApiKey(providerId: string): boolean {
+  return providerEnvCandidates(providerId).some((key) => {
+    const value = process.env[key]
+    return typeof value === "string" && value.trim().length > 0
+  })
+}
+
 async function sendFinalAskResponse(
   interaction: Interaction,
   threadId: string | undefined,
@@ -1017,11 +1048,11 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
       }
     }
 
-    if (!commandIsInThread && threadId) {
+    if (threadId) {
       await updateOriginalResponse(
         interaction.application_id,
         interaction.token,
-        `Working in <#${threadId}>...`,
+        commandIsInThread ? "Working..." : `Working in <#${threadId}>...`,
       )
     }
 
@@ -1203,7 +1234,7 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
       registry.getModel(selection.providerId, selection.modelId)?.contextWindow,
     )
 
-    const text = responseBuffer.trim()
+    const text = stripPromptEcho(responseBuffer.trim(), prompt)
     if (result.hadError) {
     const helpMsg = "\n\nTo switch models, use `/use-provider` and `/use-model`"
     if (text) {
@@ -1217,11 +1248,18 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
       const suffix = toolEvents > 0 ? ` (${toolEvents} tool${toolEvents > 1 ? "s" : ""})` : ""
       await sendFinalAskResponse(interaction, threadIdForFollowups, `Done${suffix}.`, usageFooter)
     }
+
+    await updateOriginalResponse(
+      interaction.application_id,
+      interaction.token,
+      commandIsInThread ? "Done." : `Response posted in <#${threadIdForFollowups || channelId}>.`,
+    )
   } catch (error) {
     console.error("processAskInteraction failed:", error)
     const message = error instanceof Error ? error.message : "Unknown error"
     try {
       await sendFollowup(interaction.application_id, interaction.token, `Request failed: ${message}`)
+      await updateOriginalResponse(interaction.application_id, interaction.token, `Request failed: ${message}`)
     } catch (followupError) {
       console.error("Failed to send fallback followup:", followupError)
     }
@@ -1303,13 +1341,14 @@ export default async function handler(
       return
     }
 
-    const [{ mapInteractionCommandToText }, { parseDiscordCommand }, { ChannelStateStore }, { CredentialStore }, { handleDiscordCommand }, { SelectionStore }] = await Promise.all([
+    const [{ mapInteractionCommandToText }, { parseDiscordCommand }, { ChannelStateStore }, { CredentialStore }, { handleDiscordCommand }, { SelectionStore }, { OAuthTokenStore }] = await Promise.all([
       import("../../src/interaction-command-mapper.js"),
       import("../../src/command-parser.js"),
       import("../../src/channel-state-store.js"),
       import("../../src/credential-store.js"),
       import("../../src/discord-command-service.js"),
       import("../../src/selection-store.js"),
+      import("../../src/oauth-token-store.js"),
     ])
 
     const mapped = mapInteractionCommandToText(interaction.data)
@@ -1350,10 +1389,67 @@ export default async function handler(
     const stateStore = new ChannelStateStore()
     const credentials = new CredentialStore()
     const selectionStore = new SelectionStore()
+    const oauthStore = new OAuthTokenStore()
     const parsed = parseDiscordCommand(mapped.text)
     const userId = getInteractionUserId(interaction)
     const currentChannelId = interaction.channel_id || "dm"
     const inThread = interaction.channel_id ? await isThreadChannel(interaction.channel_id) : false
+
+    if (parsed.type === "config") {
+      if (!userId) {
+        await sendChunkedInteractionResponse(interaction, res, "Missing user ID.")
+        return
+      }
+
+      const userDefaults = await selectionStore.getUserDefaults(userId)
+      const threadSelection = inThread ? await selectionStore.getThreadSelection(currentChannelId) : undefined
+      const selection = await selectionStore.resolveSelection(userId, inThread ? currentChannelId : undefined)
+
+      const providerId = selection?.providerId
+      const modelId = selection?.modelId
+
+      let authLine = "Auth: provider not set"
+      if (providerId) {
+        const oauthPayload = await oauthStore.getUserProviderAuth(userId, providerId)
+        const provider = registry.getProvider(providerId)
+        const supportsOAuth = Boolean(provider?.methods.some((method) => method.kind === "oauth"))
+
+        if (oauthPayload) {
+          authLine = "Auth: authenticated via OAuth"
+        } else if (hasProviderApiKey(providerId)) {
+          authLine = "Auth: API key configured in env"
+        } else if (supportsOAuth) {
+          authLine = `Auth: not authenticated (run /auth-connect ${providerId})`
+        } else {
+          authLine = `Auth: not configured (set ${providerId.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_API_KEY)`
+        }
+      }
+
+      const scopeLine = inThread
+        ? `Scope: thread (${threadSelection?.providerId ? "thread override" : "inherits user default"})`
+        : "Scope: user default"
+
+      const lines = [
+        "Current config:",
+        `- Provider: ${providerId || "not set"}`,
+        `- Model: ${modelId || "not set"}`,
+        `- ${authLine}`,
+        `- ${scopeLine}`,
+      ]
+
+      if (!providerId) {
+        lines.push("- Next step: run /use-provider <provider>")
+      } else if (!modelId) {
+        lines.push("- Next step: run /use-model <model>")
+      }
+
+      if (inThread && userDefaults?.providerId) {
+        lines.push(`- User default: ${userDefaults.providerId}/${userDefaults.modelId || "(model not set)"}`)
+      }
+
+      await sendChunkedInteractionResponse(interaction, res, lines.join("\n"))
+      return
+    }
 
     if (parsed.type === "providers") {
       const page = renderProvidersPage(registry, credentials.listProviders(), 0)

@@ -38,6 +38,8 @@ export function mapInteractionCommandToText(
     }
     case "providers":
       return { type: "command", text: "providers" }
+    case "config":
+      return { type: "command", text: "config" }
     case "health-check":
       return { type: "command", text: "health-check" }
     case "update":

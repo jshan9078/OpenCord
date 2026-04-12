@@ -4,6 +4,7 @@
  */
 export type ParsedCommand =
   | { type: "providers" }
+  | { type: "config" }
   | { type: "health_check" }
   | { type: "update" }
   | { type: "models"; providerId?: string }
@@ -62,6 +63,7 @@ function normalizeAlias(tokens: string[]): string[] {
 function isLikelyCommandWord(firstWord: string): boolean {
   return [
     "providers",
+    "config",
     "health-check",
     "update",
     "models",
@@ -115,6 +117,13 @@ export function parseDiscordCommand(input: string): ParsedCommand {
       return { type: "invalid", message: "Usage: providers" }
     }
     return { type: "providers" }
+  }
+
+  if (lower[0] === "config") {
+    if (tokens.length > 1) {
+      return { type: "invalid", message: "Usage: config" }
+    }
+    return { type: "config" }
   }
 
   if (lower[0] === "health-check") {
@@ -216,6 +225,7 @@ export function commandHelpText(): string {
   return [
     "Commands:",
     "- providers",
+    "- config",
     "- health-check",
     "- update",
     "- models [provider]",

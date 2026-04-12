@@ -16,6 +16,11 @@ describe("mapInteractionCommandToText", () => {
       text: "providers",
     })
 
+    expect(mapInteractionCommandToText({ name: "config" })).toEqual({
+      type: "command",
+      text: "config",
+    })
+
     expect(
       mapInteractionCommandToText({
         name: "use-provider",

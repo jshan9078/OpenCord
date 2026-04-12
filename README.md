@@ -188,6 +188,7 @@ ANTHROPIC_API_KEY=sk-ant-... # Anthropic
 | `/health-check` | Fast bridge health check |
 | `/update` | Refresh provider registry snapshot |
 | `/providers` | List available providers |
+| `/config` | Show current provider/model and auth status |
 | `/models [provider]` | List available models (provider autocomplete) |
 | `/use-provider <id>` | Set default provider, or override provider inside a thread |
 | `/use-model <id>` | Set default model, or override model inside a thread |
