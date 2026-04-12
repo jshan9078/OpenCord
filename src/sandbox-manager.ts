@@ -1,0 +1,232 @@
+/**
+ * Manages Vercel Sandboxes for Discord channels.
+ * Handles creation, resumption, and OpenCode server lifecycle.
+ */
+import { Sandbox } from "@vercel/sandbox"
+
+export interface SandboxContext {
+  sandboxId: string
+  opencodeBaseUrl: string
+  opencodePassword: string
+}
+
+export interface SandboxManagerOptions {
+  runtime?: "node24" | "node22" | "python3.13"
+  vcpus?: number
+  timeout?: number
+  persistent?: boolean
+}
+
+const DEFAULT_OPTIONS: Required<SandboxManagerOptions> = {
+  runtime: "node24",
+  vcpus: 2,
+  timeout: 30 * 60 * 1000, // 30 minutes
+  persistent: true,
+}
+
+export class SandboxManager {
+  private readonly options: Required<SandboxManagerOptions>
+  private readonly cache = new Map<string, SandboxContext>()
+
+  constructor(options: SandboxManagerOptions = {}) {
+    this.options = { ...DEFAULT_OPTIONS, ...options } as Required<SandboxManagerOptions>
+  }
+
+  getSandboxName(channelId: string): string {
+    return `discord-channel-${channelId}`
+  }
+
+  async getOrCreate(
+    channelId: string,
+    sandboxIdFromState: string | undefined,
+    repoUrl?: string,
+    branch = "main",
+  ): Promise<SandboxContext> {
+    const cached = this.cache.get(channelId)
+    if (cached) {
+      return cached
+    }
+
+    let sandbox: Sandbox
+
+    // Try to resume existing sandbox by ID
+    if (sandboxIdFromState) {
+      try {
+        sandbox = await Sandbox.get({ sandboxId: sandboxIdFromState })
+        console.log(`[SandboxManager] Resumed sandbox: ${sandbox.sandboxId}`)
+      } catch (error) {
+        console.log(`[SandboxManager] Could not resume sandbox ${sandboxIdFromState}, creating new`)
+        sandbox = await this.createSandbox(channelId, repoUrl, branch)
+      }
+    } else {
+      // No ID, create new
+      sandbox = await this.createSandbox(channelId, repoUrl, branch)
+    }
+
+    const context = await this.ensureOpenCodeServer(sandbox)
+    this.cache.set(channelId, context)
+    return context
+  }
+
+  private async createSandbox(channelId: string, repoUrl?: string, branch = "main"): Promise<Sandbox> {
+    const name = this.getSandboxName(channelId)
+
+    const createOptions: Parameters<typeof Sandbox.create>[0] = {
+      runtime: this.options.runtime,
+      resources: { vcpus: this.options.vcpus },
+      timeout: this.options.timeout,
+    }
+
+    if (repoUrl) {
+      createOptions.source = {
+        type: "git",
+        url: repoUrl,
+        depth: 1,
+        revision: branch !== "main" ? branch : undefined,
+      }
+    }
+
+    console.log(`[SandboxManager] Creating sandbox: ${name}`)
+    const sandbox = await Sandbox.create(createOptions)
+    console.log(`[SandboxManager] Sandbox created: ${sandbox.sandboxId}`)
+
+    return sandbox
+  }
+
+  private async ensureOpenCodeServer(sandbox: Sandbox): Promise<SandboxContext> {
+    const password = generatePassword()
+    const port = 4096
+
+    // Check if OpenCode is already running
+    const checkResult = await sandbox.runCommand({
+      cmd: "curl",
+      args: ["-s", "-o", "/dev/null", "-w", "%{http_code}", `http://localhost:${port}/global/health`],
+    }).catch(() => ({ exitCode: 1 }))
+
+    if (checkResult.exitCode === 0) {
+      console.log(`[SandboxManager] OpenCode server already running`)
+      return {
+        sandboxId: sandbox.sandboxId,
+        opencodeBaseUrl: `https://${sandbox.sandboxId}.vercel.app`,
+        opencodePassword: password,
+      }
+    }
+
+    // Install OpenCode if needed
+    await this.ensureOpenCodeInstalled(sandbox)
+
+    // Start OpenCode server
+    console.log(`[SandboxManager] Starting OpenCode server`)
+    await sandbox.runCommand({
+      cmd: "bash",
+      args: [
+        "-lc",
+        `OPENCODE_SERVER_PASSWORD=${password} nohup opencode serve --hostname 0.0.0.0 --port ${port} >/tmp/opencode.log 2>&1 &`,
+      ],
+    })
+
+    // Wait for server to be ready
+    await this.waitForOpenCode(sandbox, port)
+
+    return {
+      sandboxId: sandbox.sandboxId,
+      opencodeBaseUrl: `https://${sandbox.sandboxId}.vercel.app`,
+      opencodePassword: password,
+    }
+  }
+
+  private async ensureOpenCodeInstalled(sandbox: Sandbox): Promise<void> {
+    // Check if opencode is available
+    const checkResult = await sandbox.runCommand({
+      cmd: "which",
+      args: ["opencode"],
+    }).catch(() => ({ exitCode: 1 }))
+
+    if (checkResult.exitCode === 0) {
+      return
+    }
+
+    console.log(`[SandboxManager] Installing OpenCode`)
+    await sandbox.runCommand({
+      cmd: "bash",
+      args: ["-lc", "curl -LsSf https://opencode.ai/install.sh | sh"],
+    })
+  }
+
+  private async waitForOpenCode(sandbox: Sandbox, port: number, maxAttempts = 30): Promise<void> {
+    for (let i = 0; i < maxAttempts; i++) {
+      const result = await sandbox.runCommand({
+        cmd: "curl",
+        args: ["-s", "-o", "/dev/null", "-w", "%{http_code}", `http://localhost:${port}/global/health`],
+      }).catch(() => ({ exitCode: 1 }))
+
+      if (result.exitCode === 0) {
+        console.log(`[SandboxManager] OpenCode server ready`)
+        return
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+    }
+
+    throw new Error("OpenCode server failed to start")
+  }
+
+  async runCommand(
+    channelId: string,
+    cmd: string,
+    args: string[],
+    options?: { cwd?: string; env?: Record<string, string> },
+  ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+    const context = await this.getOrCreate(channelId, undefined)
+    const sandbox = await Sandbox.get({ sandboxId: context.sandboxId })
+    const result = await sandbox.runCommand({
+      cmd,
+      args,
+      cwd: options?.cwd,
+      env: options?.env,
+    })
+
+    return {
+      stdout: await result.stdout(),
+      stderr: await result.stderr(),
+      exitCode: result.exitCode,
+    }
+  }
+
+  async stop(channelId: string): Promise<void> {
+    const context = this.cache.get(channelId)
+    if (context) {
+      try {
+        const sandbox = await Sandbox.get({ sandboxId: context.sandboxId })
+        await sandbox.stop()
+      } catch (e) {
+        // Already stopped
+      }
+      this.cache.delete(channelId)
+    }
+  }
+
+  async stopAll(): Promise<void> {
+    for (const channelId of this.cache.keys()) {
+      await this.stop(channelId)
+    }
+  }
+}
+
+function generatePassword(): string {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+  let result = ""
+  for (let i = 0; i < 32; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length))
+  }
+  return result
+}
+
+export function getSandboxManager(): SandboxManager {
+  if (!globalSandboxManager) {
+    globalSandboxManager = new SandboxManager()
+  }
+  return globalSandboxManager
+}
+
+let globalSandboxManager: SandboxManager | null = null

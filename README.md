@@ -57,8 +57,8 @@ In Vercel dashboard, set:
 | `DISCORD_PUBLIC_KEY` | Your Discord public key (hex) |
 | `GITHUB_TOKEN` | GitHub personal access token |
 | `BRIDGE_SECRET` | Random string (16+ chars) for encrypting credentials |
-| `OPENCODE_BASE_URL` | Your OpenCode server URL |
-| `OPENCODE_SERVER_PASSWORD` | Your OpenCode server password |
+
+No OpenCode URL needed - the bridge creates sandboxes and runs OpenCode automatically.
 
 ### 4. Register Slash Commands
 
@@ -99,15 +99,10 @@ printf %s "$GITHUB_TOKEN" | pnpm exec bun scripts/auth.ts github --stdin
 | `/use-model <id>` | Switch model |
 
 ## Pricing
+Everything is free out of the box if you use the Vercel hobby tier.
+It relies on whatever subscription / providers you have on OpenCode.
 
-| Task | Cost |
-|------|------|
-| Quick fix (~2 min) | ~$0.01 |
-| Feature work (~5 min) | ~$0.03 |
-| Build & test (~30 min) | ~$0.34 |
-| Idle | $0 |
-
-**Hobby**: Free (4 CPU-hours/month, non-commercial)
+**Hobby**: Free (5 CPU-hours/month, non-commercial)
 **Pro**: $20/mo + usage (commercial)
 
 ## Documentation

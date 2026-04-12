@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@vercel/functions": "^2.2.13",
+    "@vercel/sandbox": "^1.9.2",
     "discord.js": "^14.22.1",
     "tweetnacl": "^1.0.3"
   },

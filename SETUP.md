@@ -21,7 +21,7 @@ Done. Start coding from Discord.
 
 You'll need accounts at:
 - [Discord Developer Portal](https://discord.com/developers/applications)
-- [Vercel](https://vercel.com) (Hobby works for personal use; Pro for commercial)
+- [Vercel](https://vercel.com) (free hobby tier)
 
 ---
 
@@ -60,14 +60,10 @@ You'll need accounts at:
 pnpm run deploy  # or `vercel deploy --prod`
 
 # Set these environment variables in Vercel:
-export DISCORD_BOT_TOKEN=your_discord_token
-export DISCORD_PUBLIC_KEY=... # Discord app public key
-export DISCORD_APPLICATION_ID=...
-export VERCEL_OIDC_TOKEN=...  # From `vercel env pull`
-export BRIDGE_SECRET=...      # >= 16 chars, used for encrypted auth store
-export GITHUB_TOKEN=...       # For repo/branch selection
-export OPENCODE_BASE_URL=...  # Your OpenCode server URL
-export OPENCODE_SERVER_PASSWORD=...
+export DISCORD_APPLICATION_ID=...  # Discord application ID
+export DISCORD_PUBLIC_KEY=...     # Discord app public key (hex)
+export BRIDGE_SECRET=...          # >= 16 chars, for encrypted credential store
+export GITHUB_TOKEN=...           # GitHub personal access token (for repo/branch selection)
 ```
 
 ### Register Discord Commands
@@ -79,10 +75,10 @@ Then register commands:
 
 ```bash
 # Guild scope (fast updates, recommended while iterating)
-DISCORD_APPLICATION_ID=... DISCORD_BOT_TOKEN=... DISCORD_GUILD_ID=... pnpm exec bun scripts/register-commands.ts
+DISCORD_APPLICATION_ID=... pnpm exec bun scripts/register-commands.ts
 
-# Global scope
-DISCORD_APPLICATION_ID=... DISCORD_BOT_TOKEN=... pnpm exec bun scripts/register-commands.ts
+# Global scope (slower, for production)
+DISCORD_APPLICATION_ID=... pnpm exec bun scripts/register-commands.ts
 ```
 
 ---

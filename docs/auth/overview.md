@@ -143,8 +143,6 @@ const repos = await gh.listRepos()
 |----------|---------|
 | `BRIDGE_SECRET` | Key for encrypting credential store |
 | `GITHUB_TOKEN` | GitHub API token |
-| `OPENCODE_BASE_URL` | OpenCode server URL |
-| `OPENCODE_SERVER_PASSWORD` | OpenCode server password |
 
 ## Related Files
 

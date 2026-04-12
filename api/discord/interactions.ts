@@ -8,6 +8,7 @@ import { OpencodeRuntime } from "../../src/opencode-runtime"
 import { executePromptForChannel } from "../../src/prompt-orchestrator"
 import { loadProviderRegistryFromEnv } from "../../src/provider-registry-env"
 import { GitHubClient, getGitHubClient } from "../../src/github-client"
+import { getSandboxManager, type SandboxContext } from "../../src/sandbox-manager"
 
 type Interaction = {
   id: string
@@ -282,20 +283,47 @@ async function handleProjectCommand(interaction: Interaction): Promise<Response>
 async function processAskInteraction(interaction: Interaction, prompt: string): Promise<void> {
   const channelId = interaction.channel_id
   const bridgeSecret = process.env.BRIDGE_SECRET
-  const baseUrl = process.env.OPENCODE_BASE_URL
 
-  if (!channelId || !bridgeSecret || !baseUrl) {
+  if (!channelId || !bridgeSecret) {
     await sendFollowup(
       interaction.application_id,
       interaction.token,
-      "Missing server configuration for slash workflow (channel/BRIDGE_SECRET/OPENCODE_BASE_URL).",
+      "Missing server configuration for slash workflow (channel/BRIDGE_SECRET).",
     )
     return
   }
 
-  const runtime = new OpencodeRuntime(baseUrl, process.env.OPENCODE_SERVER_PASSWORD)
-  const credentials = new CredentialStore(bridgeSecret)
   const stateStore = new ChannelStateStore()
+  const state = stateStore.get(channelId)
+
+  let repoUrl: string | undefined
+  let branch = "main"
+  if (state.repoUrl) {
+    repoUrl = state.repoUrl
+    branch = state.branch || "main"
+  }
+
+  const sandboxManager = getSandboxManager()
+  let sandboxContext: SandboxContext
+
+  try {
+    sandboxContext = await sandboxManager.getOrCreate(channelId, state.sandboxId, repoUrl, branch)
+  } catch (error) {
+    console.error("Failed to get/create sandbox:", error)
+    await sendFollowup(
+      interaction.application_id,
+      interaction.token,
+      `Failed to create sandbox: ${error instanceof Error ? error.message : "Unknown error"}`,
+    )
+    return
+  }
+
+  // Update state with sandbox ID for future resumption
+  state.sandboxId = sandboxContext.sandboxId
+  stateStore.set(state)
+
+  const runtime = new OpencodeRuntime(sandboxContext.opencodeBaseUrl, sandboxContext.opencodePassword)
+  const credentials = new CredentialStore(bridgeSecret)
   const registry = loadProviderRegistryFromEnv()
 
   let responseBuffer = ""

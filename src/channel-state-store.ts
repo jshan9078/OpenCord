@@ -7,7 +7,7 @@ import { getConfigDir, getConfigPath } from "./storage-paths"
 
 export interface ChannelState {
   channelId: string
-  sandboxName?: string
+  sandboxId?: string
   activeProviderId?: string
   activeModelId?: string
   sessionByProfile?: Record<string, string>
