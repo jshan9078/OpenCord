@@ -57,10 +57,13 @@ In Vercel dashboard, set:
 | `GITHUB_TOKEN` | GitHub personal access token |
 | `BRIDGE_SECRET` | Random string (16+ chars) for encrypting credentials |
 
-**Provider API keys** (optional - add for providers you want to use):
+**Provider API keys** (optional):
 - `OPENAI_API_KEY`
 - `ANTHROPIC_API_KEY`
 - etc.
+
+**User config** (optional - your personal OpenCode settings):
+- `OPENCODE_GIST_URL` = URL of a private GitHub gist with your `opencode.jsonc`
 
 No OpenCode URL needed - the bridge creates sandboxes and runs OpenCode automatically.
 

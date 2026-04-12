@@ -130,6 +130,9 @@ export class SandboxManager {
     // Install OpenCode if needed
     await this.ensureOpenCodeInstalled(sandbox)
 
+    // Fetch and inject user config from gist if configured
+    await this.injectUserConfig(sandbox)
+
     // Inject credentials from env vars into sandbox env
     const envPrefix = this.buildCredentialsEnv()
 
@@ -179,6 +182,67 @@ export class SandboxManager {
       cmd: "bash",
       args: ["-lc", "curl -LsSf https://opencode.ai/install.sh | sh"],
     })
+  }
+
+  private async injectUserConfig(sandbox: Sandbox): Promise<void> {
+    const gistUrl = process.env.OPENCODE_GIST_URL
+    if (!gistUrl) {
+      return
+    }
+
+    console.log(`[SandboxManager] Fetching user config from gist`)
+
+    try {
+      // Fetch gist content
+      // Extract gist ID from URL
+      const gistIdMatch = gistUrl.match(/gist\.github\.com\/[^/]+\/([a-f0-9]+)/i)
+      if (!gistIdMatch) {
+        console.log(`[SandboxManager] Invalid gist URL format`)
+        return
+      }
+
+      const gistId = gistIdMatch[1]
+      const apiUrl = `https://api.github.com/gists/${gistId}`
+
+      const response = await fetch(apiUrl, {
+        headers: {
+          Accept: "application/vnd.github.v3+json",
+        },
+      })
+
+      if (!response.ok) {
+        console.log(`[SandboxManager] Failed to fetch gist: ${response.status}`)
+        return
+      }
+
+      const gist = (await response.json()) as {
+        files: Record<string, { content: string; filename: string }>
+      }
+
+      // Determine target directory in sandbox
+      const targetDir = "/vercel/sandbox/.opencode"
+
+      // Write files to sandbox
+      const files: Array<{ path: string; content: Buffer }> = []
+
+      for (const [filename, file] of Object.entries(gist.files)) {
+        const targetPath = filename.endsWith(".jsonc") || filename.endsWith(".json")
+          ? `${targetDir}/${filename}`
+          : `${targetDir}/${filename}`
+
+        files.push({
+          path: targetPath,
+          content: Buffer.from(file.content || ""),
+        })
+      }
+
+      if (files.length > 0) {
+        await sandbox.writeFiles(files)
+        console.log(`[SandboxManager] Wrote ${files.length} config files to sandbox`)
+      }
+    } catch (error) {
+      console.log(`[SandboxManager] Failed to inject user config:`, error)
+    }
   }
 
   private async waitForOpenCode(sandbox: Sandbox, port: number, maxAttempts = 30): Promise<void> {
