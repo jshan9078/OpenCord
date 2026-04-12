@@ -64,8 +64,27 @@ export class OpencodeRuntime {
   }
 
   async fetchProviderAuthMethods(): Promise<Record<string, Array<{ label: string }>>> {
-    const response = await this.request<{ data?: Record<string, Array<{ label: string }>> }>("/provider/auth")
-    return response.data || {}
+    const response = await this.request<{
+      data?: Record<string, Array<{ label: string }>>
+      [key: string]: unknown
+    }>("/provider/auth")
+
+    if (response.data && typeof response.data === "object") {
+      return response.data
+    }
+
+    const methods: Record<string, Array<{ label: string }>> = {}
+    for (const [key, value] of Object.entries(response)) {
+      if (key === "data") {
+        continue
+      }
+      if (Array.isArray(value)) {
+        methods[key] = value.filter((item): item is { label: string } => {
+          return Boolean(item && typeof item === "object" && "label" in item)
+        })
+      }
+    }
+    return methods
   }
 
   async fetchModelIds(): Promise<string[]> {

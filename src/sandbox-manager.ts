@@ -526,9 +526,14 @@ export class SandboxManager {
     }
 
     const payload = (await response.json()) as {
+      [key: string]: Array<{ label?: string }> | unknown
       data?: Record<string, Array<{ label?: string }>>
     }
-    const methods = payload.data?.[runtimeProviderId] || []
+    const methodsFromData = payload.data?.[runtimeProviderId]
+    const methodsFromRoot = Array.isArray(payload[runtimeProviderId])
+      ? (payload[runtimeProviderId] as Array<{ label?: string }>)
+      : undefined
+    const methods = methodsFromData || methodsFromRoot || []
     if (methods.length === 0) {
       return 0
     }
