@@ -114,7 +114,10 @@ export async function executePromptForChannel(
       ].join("\n")
     : prompt
 
-  await runtime.promptAsync(sessionId, finalPrompt)
+  await runtime.promptAsync(sessionId, finalPrompt, {
+    providerId,
+    modelId,
+  })
   const relayResult = await relayPromise
 
   if (!relayResult.completed && relayResult.timedOut) {

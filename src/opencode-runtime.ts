@@ -149,10 +149,22 @@ export class OpencodeRuntime {
     return response.data.id
   }
 
-  async promptAsync(sessionId: string, text: string): Promise<void> {
+  async promptAsync(
+    sessionId: string,
+    text: string,
+    model?: { providerId: string; modelId: string },
+  ): Promise<void> {
     await this.request(`/session/${sessionId}/prompt_async`, {
       method: "POST",
       body: {
+        ...(model
+          ? {
+              model: {
+                providerID: model.providerId,
+                modelID: model.modelId,
+              },
+            }
+          : {}),
         parts: [{ type: "text", text } satisfies PromptPart],
       },
     })

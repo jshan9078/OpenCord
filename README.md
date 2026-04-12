@@ -152,6 +152,8 @@ Those defaults are stored in Blob per user.
 When you run commands inside a bridge thread, the thread starts from your global defaults and can override them independently.
 If you have not set global defaults yet, the thread will tell you to do that first.
 
+On each `/ask`, the bridge sends the resolved provider/model selection directly to OpenCode for that prompt.
+
 ### 9. Set Provider Credentials
 
 **Option 1: API Keys (env vars)**
