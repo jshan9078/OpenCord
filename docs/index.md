@@ -101,7 +101,8 @@ See [Source Files](./components/source-files.md) for complete reference.
 | Build & test (~30 min) | ~$0.34 |
 | Idle | $0 |
 
-Pro plan: $20/mo credit (~156 CPU-hours)
+**Hobby plan**: Free (4 CPU-hours/month, non-commercial)
+**Pro plan**: $20/mo + usage (commercial use)
 
 ## Related Docs
 

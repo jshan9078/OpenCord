@@ -21,7 +21,7 @@ Done. Start coding from Discord.
 
 You'll need accounts at:
 - [Discord Developer Portal](https://discord.com/developers/applications)
-- [Vercel](https://vercel.com) (Pro plan recommended for persistent sandboxes)
+- [Vercel](https://vercel.com) (Hobby works for personal use; Pro for commercial)
 
 ---
 
@@ -177,8 +177,9 @@ Each Discord channel gets its own persistent sandbox:
 
 | Item | Cost |
 |------|------|
-| Vercel Pro | $20/mo credit (~156 CPU-hours) |
-| Per task | ~$0.03 typical |
+| Vercel Hobby | Free (4 CPU-hours/month, non-commercial) |
+| Vercel Pro | $20/mo + usage (1M invocations, 1TB bandwidth included) |
+| Per task | ~$0.01-0.03 typical |
 | Idle | $0 |
 
-Pro plan credit covers ~5,000 typical tasks/month.
+Hobby plan handles ~100-200 typical tasks/month. Pro adds commercial use rights.

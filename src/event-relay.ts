@@ -46,6 +46,7 @@ export interface EventRelayResult {
   completed: boolean
   timedOut: boolean
   reason: "session_complete" | "idle_timeout" | "total_timeout" | "aborted"
+  hadError: boolean
 }
 
 function asText(value: unknown): string {
@@ -81,7 +82,7 @@ function firstDefined(...values: Array<unknown>): unknown {
   return values.find((value) => value !== undefined)
 }
 
-export function isTerminalSessionEvent(event: EventEnvelope): boolean {
+export function isTerminalSessionEvent(event: EventEnvelope, hadError = false): boolean {
   if (event.type === "session.completed" || event.type === "session.idle") {
     return true
   }
@@ -97,6 +98,10 @@ export function isTerminalSessionEvent(event: EventEnvelope): boolean {
   }
 
   if (event.type === "response.completed" || event.type === "prompt.completed") {
+    return true
+  }
+
+  if (hadError && (event.type === "message.updated" || event.type === "response.completed")) {
     return true
   }
 
@@ -144,6 +149,8 @@ export async function relaySessionEvents(
 
   const events = client.event.subscribe({ signal: timeoutController.signal })
 
+  let hadError = false
+
   try {
     for await (const event of events.stream) {
       if (timeoutController.signal.aborted) {
@@ -156,11 +163,12 @@ export async function relaySessionEvents(
 
       lastEventAt = Date.now()
 
-      if (isTerminalSessionEvent(event)) {
+      if (isTerminalSessionEvent(event, hadError)) {
         return {
           completed: true,
           timedOut: false,
           reason: "session_complete",
+          hadError,
         }
       }
 
@@ -229,7 +237,9 @@ export async function relaySessionEvents(
       }
 
       if (event.type === "session.error") {
-        await sink.onError(asText(event.properties?.error) || "Session error")
+        const errorMsg = asText(event.properties?.error) || "Session error"
+        await sink.onError(errorMsg)
+        hadError = true
       }
     }
   } finally {
@@ -244,6 +254,7 @@ export async function relaySessionEvents(
       completed: false,
       timedOut: true,
       reason: timeoutReason,
+      hadError,
     }
   }
 
@@ -251,5 +262,6 @@ export async function relaySessionEvents(
     completed: false,
     timedOut: false,
     reason: "aborted",
+    hadError,
   }
 }

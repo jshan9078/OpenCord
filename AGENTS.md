@@ -35,8 +35,9 @@ Each Discord channel maps to a persistent sandbox named `discord-channel-{channe
 
 ## Pricing
 
-- **Pro plan**: $20/mo credit (~156 CPU-hours)
-- **Pay per use**: ~$0.03 per typical task
+- **Hobby**: Free (4 CPU-hours/month, non-commercial)
+- **Pro**: $20/mo + usage (1M invocations, 1TB bandwidth included)
+- **Pay per use**: ~$0.01-0.03 per typical task
 - **Idle**: $0 (no cost when not running)
 
 ## When Changing Core Decisions

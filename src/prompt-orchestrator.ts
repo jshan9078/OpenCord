@@ -65,7 +65,7 @@ export async function executePromptForChannel(
     forceNewSession?: boolean
     recoveryContext?: string
   } = {},
-): Promise<{ ok: true } | { ok: false; message: string }> {
+): Promise<{ ok: true; hadError?: boolean } | { ok: false; message: string }> {
   const state = stateStore.get(channelId)
   if (!state.activeProviderId) {
     return { ok: false, message: "No active provider. Run: use provider <provider>" }
@@ -128,5 +128,5 @@ export async function executePromptForChannel(
     }
   }
 
-  return { ok: true }
+  return { ok: true, hadError: relayResult.hadError }
 }

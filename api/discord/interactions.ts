@@ -354,7 +354,15 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
   }
 
   const text = responseBuffer.trim()
-  if (text) {
+  if (result.hadError) {
+    const helpMsg = "\n\nTo switch models, use `/use-provider` and `/use-model`"
+    if (text) {
+      const clipped = text.length > 1750 ? `${text.slice(0, 1749)}...${helpMsg}` : text + helpMsg
+      await sendFollowup(interaction.application_id, interaction.token, clipped)
+    } else {
+      await sendFollowup(interaction.application_id, interaction.token, `Error occurred.${helpMsg}`)
+    }
+  } else if (text) {
     const clipped = text.length > 1800 ? `${text.slice(0, 1799)}...` : text
     await sendFollowup(interaction.application_id, interaction.token, clipped)
   } else {

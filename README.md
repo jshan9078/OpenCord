@@ -107,7 +107,8 @@ printf %s "$GITHUB_TOKEN" | pnpm exec bun scripts/auth.ts github --stdin
 | Build & test (~30 min) | ~$0.34 |
 | Idle | $0 |
 
-**Vercel Pro**: $20/mo credit (~156 CPU-hours)
+**Hobby**: Free (4 CPU-hours/month, non-commercial)
+**Pro**: $20/mo + usage (commercial)
 
 ## Documentation
 
