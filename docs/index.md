@@ -92,7 +92,7 @@ See [Source Files](./components/source-files.md) for complete reference.
 | `DISCORD_PUBLIC_KEY` | Yes | Signature verification key |
 | `DISCORD_BOT_TOKEN` | Yes | Discord bot token (for thread creation) |
 | `GITHUB_TOKEN` | Yes | For repo/branch selection |
-| `OPENCODE_GIST_URL` | No | GitHub gist URL with your `opencode.jsonc` (create via `scripts/bundle-config.ts`) |
+| `OPENCODE_GIST_URL` | No | GitHub gist URL with your `opencode.jsonc` (create via `pnpm tsx scripts/bundle-config.ts`) |
 
 No external OpenCode server needed - the bridge creates Vercel Sandboxes and runs OpenCode inside them.
 

@@ -55,9 +55,9 @@ pnpm install
 - `ANTHROPIC_API_KEY`
 - etc.
 
-**User config** (optional):
+**User config** (optional - your personal OpenCode settings like aliases, templates):
 - `OPENCODE_GIST_URL` = URL of a private GitHub gist with your `opencode.jsonc`
-- To create: run `node scripts/bundle-config.ts` (will prompt for GitHub token or use `GITHUB_TOKEN` env var)
+- To create: run `pnpm tsx scripts/bundle-config.ts` (bundles your local OpenCode config into a gist)
 
 Now pull env vars locally and deploy:
 
