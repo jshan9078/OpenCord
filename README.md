@@ -77,7 +77,26 @@ pnpm tsx scripts/register-commands.ts
 # (uses .env.local values - run `vercel env pull` first to get them)
 ```
 
-### 5. Set Provider Credentials
+### 5. Set Discord Interactions URL
+
+In the Discord Developer Portal for your application, set:
+
+```text
+https://your-vercel-domain.vercel.app/api/discord/interactions
+```
+
+Example:
+
+```text
+https://discord-bridge-sigma.vercel.app/api/discord/interactions
+```
+
+Discord will verify this URL immediately, so make sure:
+- your latest code is deployed to Vercel
+- `DISCORD_PUBLIC_KEY` in Vercel matches the same Discord application
+- the URL uses HTTPS and points to `/api/discord/interactions`
+
+### 6. Set Provider Credentials
 
 **Option 1: API Keys (env vars)**
 ```bash

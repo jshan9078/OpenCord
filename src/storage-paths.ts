@@ -6,7 +6,16 @@ import path from "path"
 import { homedir } from "os"
 
 export function getBaseDir(): string {
-  return process.env.SESSION_BASE_DIR || path.join(homedir(), ".cache", "opencode-chat-bridge")
+  if (process.env.SESSION_BASE_DIR) {
+    return process.env.SESSION_BASE_DIR
+  }
+
+  const tempRoot = process.env.TMPDIR || process.env.TEMP || process.env.TMP
+  if (tempRoot) {
+    return path.join(tempRoot, "opencode-chat-bridge")
+  }
+
+  return path.join(homedir(), ".cache", "opencode-chat-bridge")
 }
 
 export function getConfigDir(): string {
