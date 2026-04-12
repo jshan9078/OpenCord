@@ -38,6 +38,8 @@ export function mapInteractionCommandToText(
     }
     case "providers":
       return { type: "command", text: "providers" }
+    case "health-check":
+      return { type: "command", text: "health-check" }
     case "models": {
       const provider = optionValue(data, "provider")
       return { type: "command", text: provider ? `models ${provider}` : "models" }

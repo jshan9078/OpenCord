@@ -102,6 +102,7 @@ ANTHROPIC_API_KEY=sk-ant-... # Anthropic
 | `/project set <url> [branch]` | Set project directly |
 | `/project show` | View current project |
 | `/project clear` | Clear project |
+| `/health-check` | Fast bridge health check |
 | `/providers` | List available providers |
 | `/models` | List available models |
 | `/use-provider <id>` | Switch provider |

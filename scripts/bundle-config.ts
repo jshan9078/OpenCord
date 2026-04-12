@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 
+import dotenv from "dotenv"
+dotenv.config({ path: ".env.local" })
+
 /**
  * Bundle user OpenCode config into a GitHub gist.
  * 
  * Usage:
- *   node scripts/bundle-config.ts
- *   # or with GitHub token:
- *   GITHUB_TOKEN=ghp_xxx node scripts/bundle-config.ts
+ *   pnpm tsx scripts/bundle-config.ts
+ *   # (GITHUB_TOKEN loaded from .env.local automatically)
  */
 
 import { readdir, readFile, stat } from "fs/promises"
@@ -120,6 +122,12 @@ async function readDirRecursive(dir: string, baseDir: string): Promise<Map<strin
 }
 
 async function createGist(token: string, files: Record<string, string>): Promise<string> {
+  // GitHub API expects files to be an object with content property
+  const gistFiles: Record<string, { content: string }> = {}
+  for (const [filename, content] of Object.entries(files)) {
+    gistFiles[filename] = { content }
+  }
+
   const response = await fetch("https://api.github.com/gists", {
     method: "POST",
     headers: {
@@ -130,7 +138,7 @@ async function createGist(token: string, files: Record<string, string>): Promise
     body: JSON.stringify({
       description: "OpenCode user config - Discord Bridge",
       public: false,
-      files,
+      files: gistFiles,
     }),
   })
   

@@ -4,12 +4,10 @@ import { ChannelStateStore } from "../../src/channel-state-store"
 import { CredentialStore } from "../../src/credential-store"
 import { handleDiscordCommand } from "../../src/discord-command-service"
 import { mapInteractionCommandToText } from "../../src/interaction-command-mapper"
-import { OpencodeRuntime } from "../../src/opencode-runtime"
-import { executePromptForChannel } from "../../src/prompt-orchestrator"
-import { loadProviderRegistryFromEnv } from "../../src/provider-registry-env"
 import { GitHubClient, getGitHubClient } from "../../src/github-client"
-import { getSandboxManager, type SandboxContext, type OAuthStartResult, type OAuthCompleteResult } from "../../src/sandbox-manager"
 import { getRecoveryContext } from "../../src/discord-message-fetcher"
+import { loadProviderRegistryFromEnv } from "../../src/provider-registry-env"
+import type { SandboxContext, OAuthStartResult, OAuthCompleteResult } from "../../src/sandbox-manager"
 
 type Interaction = {
   id: string
@@ -244,6 +242,7 @@ async function handleProjectSelectMenu(interaction: Interaction): Promise<Respon
 }
 
 async function handleAuthConnect(interaction: Interaction, text: string): Promise<Response> {
+  const { getSandboxManager } = await import("../../src/sandbox-manager")
   const channelId = interaction.channel_id
   if (!channelId) {
     return json({ type: 4, data: { content: "This command must be used in a channel." } })
@@ -390,6 +389,13 @@ async function handleProjectCommand(interaction: Interaction): Promise<Response>
 }
 
 async function processAskInteraction(interaction: Interaction, prompt: string): Promise<void> {
+  const [{ OpencodeRuntime }, { executePromptForChannel }, { getSandboxManager }, { loadProviderRegistryFromEnv }] = await Promise.all([
+    import("../../src/opencode-runtime"),
+    import("../../src/prompt-orchestrator"),
+    import("../../src/sandbox-manager"),
+    import("../../src/provider-registry-env"),
+  ])
+
   const channelId = interaction.channel_id
   const messageId = interaction.message?.id
 
@@ -564,70 +570,80 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
 }
 
 export default async function handler(request: Request): Promise<Response> {
-  if (request.method !== "POST") {
-    return json({ error: "Method not allowed" }, 405)
-  }
-
-  const publicKey = process.env.DISCORD_PUBLIC_KEY
-  if (!publicKey) {
-    return json({ error: "DISCORD_PUBLIC_KEY not set" }, 500)
-  }
-
-  const signature = request.headers.get("x-signature-ed25519") || ""
-  const timestamp = request.headers.get("x-signature-timestamp") || ""
-  const body = await request.text()
-
-  if (!verifyDiscordRequest(body, signature, timestamp, publicKey)) {
-    return json({ error: "Invalid request signature" }, 401)
-  }
-
-  const interaction = JSON.parse(body) as Interaction
-
-  if (interaction.type === 1) {
-    return json({ type: 1 })
-  }
-
-  if (interaction.type === 3) {
-    if (interaction.data?.custom_id?.startsWith("tool:")) {
-      return handleToolButtonInteraction(interaction)
+  try {
+    if (request.method !== "POST") {
+      return json({ error: "Method not allowed" }, 405)
     }
-    if (interaction.data?.custom_id?.startsWith("project:")) {
-      return handleProjectSelectMenu(interaction)
+
+    const publicKey = process.env.DISCORD_PUBLIC_KEY
+    if (!publicKey) {
+      return json({ error: "DISCORD_PUBLIC_KEY not set" }, 500)
     }
-    return json({ type: 4, data: { content: "Unknown interaction." } })
+
+    const signature = request.headers.get("x-signature-ed25519") || ""
+    const timestamp = request.headers.get("x-signature-timestamp") || ""
+    const body = await request.text()
+
+    if (!verifyDiscordRequest(body, signature, timestamp, publicKey)) {
+      return json({ error: "Invalid request signature" }, 401)
+    }
+
+    const interaction = JSON.parse(body) as Interaction
+
+    if (interaction.type === 1) {
+      return json({ type: 1 })
+    }
+
+    if (interaction.type === 3) {
+      if (interaction.data?.custom_id?.startsWith("tool:")) {
+        return handleToolButtonInteraction(interaction)
+      }
+      if (interaction.data?.custom_id?.startsWith("project:")) {
+        return handleProjectSelectMenu(interaction)
+      }
+      return json({ type: 4, data: { content: "Unknown interaction." } })
+    }
+
+    if (interaction.type !== 2 || !interaction.data) {
+      return json({ type: 4, data: { content: "Unsupported interaction type." } })
+    }
+
+    const mapped = mapInteractionCommandToText(interaction.data)
+
+    if (mapped.type === "prompt") {
+      waitUntil(processAskInteraction(interaction, mapped.text))
+      return json({ type: 5 })
+    }
+
+    if (mapped.text === "project" || mapped.text === "project show" || mapped.text === "project select") {
+      return handleProjectCommand(interaction)
+    }
+
+    if (mapped.text.startsWith("auth-connect") || mapped.text.startsWith("auth connect")) {
+      return handleAuthConnect(interaction, mapped.text)
+    }
+
+    const registry = loadProviderRegistryFromEnv()
+    const stateStore = new ChannelStateStore()
+    const credentials = new CredentialStore()
+
+    const commandResult = handleDiscordCommand(
+      mapped.text,
+      { channelId: interaction.channel_id || "dm" },
+      stateStore,
+      registry,
+      credentials,
+    )
+
+    const content = commandResult.message || "Done."
+    return json({ type: 4, data: { content } })
+  } catch (error) {
+    console.error("Discord interaction handler failed:", error)
+    return json({
+      type: 4,
+      data: {
+        content: `Handler error: ${error instanceof Error ? error.message : "Unknown error"}`,
+      },
+    })
   }
-
-  if (interaction.type !== 2 || !interaction.data) {
-    return json({ type: 4, data: { content: "Unsupported interaction type." } })
-  }
-
-  const mapped = mapInteractionCommandToText(interaction.data)
-
-  if (mapped.type === "prompt") {
-    waitUntil(processAskInteraction(interaction, mapped.text))
-    return json({ type: 5 })
-  }
-
-  if (mapped.text === "project" || mapped.text === "project show" || mapped.text === "project select") {
-    return handleProjectCommand(interaction)
-  }
-
-  if (mapped.text.startsWith("auth-connect") || mapped.text.startsWith("auth connect")) {
-    return handleAuthConnect(interaction, mapped.text)
-  }
-
-  const registry = loadProviderRegistryFromEnv()
-  const stateStore = new ChannelStateStore()
-  const credentials = new CredentialStore()
-
-  const commandResult = handleDiscordCommand(
-    mapped.text,
-    { channelId: interaction.channel_id || "dm" },
-    stateStore,
-    registry,
-    credentials,
-  )
-
-  const content = commandResult.message || "Done."
-  return json({ type: 4, data: { content } })
 }

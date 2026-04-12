@@ -18,6 +18,18 @@ export interface CommandResult {
   message?: string
 }
 
+function formatHealthCheck(registry: ProviderRegistry, credentials: CredentialStore): string {
+  const checks = [
+    `time=${new Date().toISOString()}`,
+    `providers=${registry.listProviders().length}`,
+    `configuredProviders=${credentials.listProviders().length}`,
+    `githubToken=${credentials.getGithubToken() ? "present" : "missing"}`,
+    `discordBotToken=${process.env.DISCORD_BOT_TOKEN ? "present" : "missing"}`,
+  ]
+
+  return ["Bridge OK", ...checks.map((check) => `- ${check}`)].join("\n")
+}
+
 function formatProviders(
   registry: ProviderRegistry,
   credentials: CredentialStore,
@@ -102,6 +114,14 @@ export function handleDiscordCommand(
       handled: true,
       isPrompt: false,
       message: formatProviders(registry, credentials),
+    }
+  }
+
+  if (parsed.type === "health_check") {
+    return {
+      handled: true,
+      isPrompt: false,
+      message: formatHealthCheck(registry, credentials),
     }
   }
 

@@ -38,6 +38,11 @@ export function buildApplicationCommands(): DiscordApplicationCommand[] {
       type: 1,
     },
     {
+      name: "health-check",
+      description: "Fast bridge health check",
+      type: 1,
+    },
+    {
       name: "models",
       description: "List models for active or selected provider",
       type: 1,

@@ -59,6 +59,21 @@ Shows:
 - Available auth methods (OAuth, API key, none)
 - Whether credentials are configured
 
+### /health-check
+
+Run a fast health check against the bridge without starting a sandbox.
+
+```
+/health-check
+```
+
+Shows:
+- Current server time
+- Number of providers loaded from env
+- Number of configured providers
+- Whether `GITHUB_TOKEN` is present
+- Whether `DISCORD_BOT_TOKEN` is present
+
 ### /models
 
 List available models for a provider.
