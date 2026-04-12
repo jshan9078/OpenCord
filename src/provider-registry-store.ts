@@ -1,12 +1,12 @@
 /**
  * Loads and refreshes the durable provider registry snapshot.
- * The snapshot is stored in a GitHub gist so slash commands do not depend on models.dev on every request.
+ * The snapshot is stored in Vercel Blob so slash commands do not depend on models.dev on every request.
  */
+import { head, put } from "@vercel/blob"
 import { classifyAuthMethod, ProviderRegistry, type ProviderRecord } from "./provider-registry.js"
 import { loadProviderRegistryFromEnv } from "./provider-registry-env.js"
 
-const REGISTRY_GIST_DESCRIPTION = "Discord Bridge provider registry"
-const REGISTRY_GIST_FILENAME = "provider-registry.json"
+const REGISTRY_BLOB_PATH = "provider-registry/provider-registry.json"
 const CACHE_TTL_MS = 5 * 60 * 1000
 
 type RegistryDocument = Record<
@@ -25,12 +25,6 @@ type ModelsDevModel = {
 type ModelsDevProvider = {
   env?: string[]
   models?: Record<string, ModelsDevModel>
-}
-
-type GitHubGistSummary = {
-  id: string
-  html_url: string
-  files?: Record<string, { filename?: string; raw_url?: string }>
 }
 
 let cachedRegistry: { registry: ProviderRegistry; expiresAt: number } | undefined
@@ -57,30 +51,6 @@ function methodLabels(providerId: string, envVars: string[] | undefined): string
     return ["No auth"]
   }
   return ["API Key"]
-}
-
-async function githubRequest<T>(token: string, path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`https://api.github.com${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/vnd.github.v3+json",
-      "Content-Type": "application/json",
-      "User-Agent": "discord-bridge",
-      ...(init?.headers || {}),
-    },
-  })
-
-  if (!response.ok) {
-    throw new Error(`GitHub API error: ${response.status}`)
-  }
-
-  return response.json() as Promise<T>
-}
-
-async function findRegistryGist(token: string): Promise<GitHubGistSummary | undefined> {
-  const gists = await githubRequest<GitHubGistSummary[]>(token, "/gists?per_page=100")
-  return gists.find((gist) => gist.files && REGISTRY_GIST_FILENAME in gist.files)
 }
 
 async function fetchModelsDevRegistryDocument(): Promise<RegistryDocument> {
@@ -112,22 +82,22 @@ async function fetchModelsDevRegistryDocument(): Promise<RegistryDocument> {
   return document
 }
 
-async function fetchStoredRegistryDocument(token: string): Promise<{ document: RegistryDocument; url: string } | undefined> {
-  const gist = await findRegistryGist(token)
-  const file = gist?.files?.[REGISTRY_GIST_FILENAME]
-  const rawUrl = file?.raw_url
-  if (!gist || !rawUrl) {
+async function fetchStoredRegistryDocument(): Promise<{ document: RegistryDocument; url: string } | undefined> {
+  let blob
+  try {
+    blob = await head(REGISTRY_BLOB_PATH)
+  } catch {
     return undefined
   }
 
-  const response = await fetch(rawUrl)
+  const response = await fetch(blob.url)
   if (!response.ok) {
-    throw new Error(`Failed to fetch provider registry gist: ${response.status}`)
+    throw new Error(`Failed to fetch provider registry blob: ${response.status}`)
   }
 
   return {
     document: (await response.json()) as RegistryDocument,
-    url: gist.html_url,
+    url: blob.url,
   }
 }
 
@@ -144,10 +114,9 @@ export async function loadProviderRegistry(): Promise<ProviderRegistry> {
     return cachedRegistry.registry
   }
 
-  const token = process.env.GITHUB_TOKEN
-  if (token) {
+  if (process.env.BLOB_READ_WRITE_TOKEN) {
     try {
-      const stored = await fetchStoredRegistryDocument(token)
+      const stored = await fetchStoredRegistryDocument()
       if (stored) {
         return setRegistryCache(toRegistry(stored.document))
       }
@@ -160,39 +129,30 @@ export async function loadProviderRegistry(): Promise<ProviderRegistry> {
 }
 
 export async function refreshProviderRegistry(): Promise<{
-  gistUrl: string
+  blobUrl: string
   providerCount: number
   modelCount: number
   created: boolean
 }> {
-  const token = process.env.GITHUB_TOKEN
-  if (!token) {
-    throw new Error("GITHUB_TOKEN is required to create or update the provider registry gist.")
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    throw new Error("BLOB_READ_WRITE_TOKEN is required to create or update the provider registry blob.")
   }
 
   const document = await fetchModelsDevRegistryDocument()
   const payload = JSON.stringify(document)
-  const existing = await findRegistryGist(token)
+  const existing = await fetchStoredRegistryDocument().catch(() => undefined)
 
-  const body = JSON.stringify({
-    description: REGISTRY_GIST_DESCRIPTION,
-    public: false,
-    files: {
-      [REGISTRY_GIST_FILENAME]: {
-        content: payload,
-      },
-    },
+  const blob = await put(REGISTRY_BLOB_PATH, payload, {
+    access: "public",
+    addRandomSuffix: false,
+    contentType: "application/json",
   })
-
-  const gist = existing
-    ? await githubRequest<GitHubGistSummary>(token, `/gists/${existing.id}`, { method: "PATCH", body })
-    : await githubRequest<GitHubGistSummary>(token, "/gists", { method: "POST", body })
 
   const registry = toRegistry(document)
   setRegistryCache(registry)
 
   return {
-    gistUrl: gist.html_url,
+    blobUrl: blob.url,
     providerCount: registry.listProviders().length,
     modelCount: registry.listProviders().reduce((sum, provider) => sum + provider.models.length, 0),
     created: !existing,

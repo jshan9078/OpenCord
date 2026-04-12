@@ -84,12 +84,12 @@ Refresh the stored provider registry snapshot from `models.dev`.
 ```
 
 Behavior:
-- Creates the provider registry gist on first run
-- Updates the existing registry gist on later runs
+- Creates the provider registry blob on first run
+- Updates the existing registry blob on later runs
 - Refreshes the snapshot used by `/providers`, `/models`, `/use-provider`, and `/ask`
 
 Requires:
-- `GITHUB_TOKEN` with `gist` scope
+- `BLOB_READ_WRITE_TOKEN`
 
 ### /models
 

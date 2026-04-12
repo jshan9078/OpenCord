@@ -75,6 +75,7 @@ Required PAT scopes: `repo`, `read:user`, `gist`
 | Variable | Purpose |
 |----------|---------|
 | `GITHUB_TOKEN` | GitHub API token |
+| `BLOB_READ_WRITE_TOKEN` | Vercel Blob token for provider registry storage |
 | `{PROVIDER}_API_KEY` | Provider API keys (e.g., OPENAI_API_KEY) |
 | `OPENCODE_GIST_URL` | Optional: URL to gist with your opencode.jsonc |
 

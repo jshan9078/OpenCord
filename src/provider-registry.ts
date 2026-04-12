@@ -62,6 +62,12 @@ export class ProviderRegistry {
     return this.getModels(providerId).some((model) => model.id === modelId)
   }
 
+  findProvidersForModel(modelId: string): string[] {
+    return this.listProviders()
+      .filter((provider) => provider.models.some((model) => model.id === modelId))
+      .map((provider) => provider.id)
+  }
+
   toStatusView(configuredProviders: string[]): ProviderStatusView[] {
     const configured = new Set(configuredProviders)
     return this.listProviders().map((provider) => ({

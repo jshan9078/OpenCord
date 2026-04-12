@@ -199,15 +199,26 @@ export function handleDiscordCommand(
       return {
         handled: true,
         isPrompt: false,
-        message: "No active provider. Run: use provider <provider>",
+        message: "No active provider. Run: /use-provider <provider> first.",
       }
     }
 
     if (!registry.hasModel(state.activeProviderId, parsed.modelId)) {
+      const matchingProviders = registry.findProvidersForModel(parsed.modelId)
+      if (matchingProviders.length > 0) {
+        return {
+          handled: true,
+          isPrompt: false,
+          message:
+            `Model '${parsed.modelId}' does not belong to active provider '${state.activeProviderId}'. ` +
+            `It is available under: ${matchingProviders.join(", ")}. Run: /use-provider <provider> first.`,
+        }
+      }
+
       return {
         handled: true,
         isPrompt: false,
-        message: `Unknown model '${parsed.modelId}' for provider '${state.activeProviderId}'. Run: models`,
+        message: `Unknown model '${parsed.modelId}' for provider '${state.activeProviderId}'. Run: /models ${state.activeProviderId}`,
       }
     }
 

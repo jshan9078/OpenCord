@@ -8,6 +8,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@vercel/blob": "^2.3.3",
     "@vercel/functions": "^2.2.13",
     "@vercel/sandbox": "^1.9.2",
     "discord.js": "^14.22.1",

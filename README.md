@@ -51,6 +51,7 @@ These values live in Vercel and are used by the deployed app:
 | `DISCORD_PUBLIC_KEY` | Your Discord public key (hex) |
 | `DISCORD_BOT_TOKEN` | Your Discord bot token (needed for thread creation) |
 | `GITHUB_TOKEN` | GitHub personal access token (needs `repo`, `read:user`, `gist` scopes) |
+| `BLOB_READ_WRITE_TOKEN` | Vercel Blob token for provider registry storage |
 | `SESSION_BASE_DIR` | Optional session/config storage path. Recommended for serverless: `/tmp/opencode-chat-bridge` |
 
 **Provider API keys** (optional):
@@ -62,7 +63,7 @@ These values live in Vercel and are used by the deployed app:
 - `OPENCODE_GIST_URL` = URL of a private GitHub gist with your `opencode.jsonc`
 - To create: run `pnpm tsx scripts/bundle-config.ts` (bundles your local OpenCode config into a gist)
 
-`GITHUB_TOKEN` is also used to store the durable provider registry gist that powers `/providers`, `/models`, and `/ask`.
+`BLOB_READ_WRITE_TOKEN` is used to store the durable provider registry snapshot that powers `/providers`, `/models`, and `/ask`.
 
 **Serverless storage** (recommended on Vercel):
 - `SESSION_BASE_DIR=/tmp/opencode-chat-bridge`
@@ -122,6 +123,8 @@ Run this once in Discord after the interactions URL is working:
 
 This creates or refreshes the stored provider registry snapshot from `models.dev`.
 Run `/update` again any time you want the latest provider/model list.
+
+This requires Vercel Blob to be configured for the project.
 
 ### 7. Set Provider Credentials
 
