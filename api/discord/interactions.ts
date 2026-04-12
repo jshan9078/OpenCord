@@ -9,6 +9,7 @@ import { executePromptForChannel } from "../../src/prompt-orchestrator"
 import { loadProviderRegistryFromEnv } from "../../src/provider-registry-env"
 import { GitHubClient, getGitHubClient } from "../../src/github-client"
 import { getSandboxManager, type SandboxContext, type OAuthStartResult, type OAuthCompleteResult } from "../../src/sandbox-manager"
+import { getRecoveryContext } from "../../src/discord-message-fetcher"
 
 type Interaction = {
   id: string
@@ -445,6 +446,7 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
 
   const sandboxManager = getSandboxManager()
   let sandboxContext: SandboxContext
+  const oldSandboxId = state.sandboxId
 
   try {
     sandboxContext = await sandboxManager.getOrCreate(channelId, state.sandboxId, repoUrl, branch)
@@ -466,6 +468,24 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
   const credentials = new CredentialStore()
   const registry = loadProviderRegistryFromEnv()
 
+  // Check if sandbox was newly created (old one expired) - fetch recovery context
+  const isNewSandbox = oldSandboxId && oldSandboxId !== sandboxContext.sandboxId
+
+  // Warn user about lost local changes if sandbox expired
+  if (isNewSandbox && state.repoUrl) {
+    await sendFollowup(
+      interaction.application_id,
+      interaction.token,
+      "⚠️ **Sandbox expired** - A new session was started. Your repository was cloned fresh from GitHub.\n\n> **Note:** Any uncommitted local changes in the previous session have been lost. Remember to commit and push your work before the sandbox expires!",
+      undefined,
+      effectiveThreadId,
+    )
+  }
+
+  const recoveryContext = isNewSandbox
+    ? await getRecoveryContext(stateStore, channelId, prompt)
+    : undefined
+
   let responseBuffer = ""
   let toolEvents = 0
   const threadIdForFollowups = effectiveThreadId
@@ -478,6 +498,7 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
     channelId,
     prompt,
     {
+      recoveryContext: recoveryContext || undefined,
       onTextDelta: async (text) => {
         responseBuffer += text
       },
