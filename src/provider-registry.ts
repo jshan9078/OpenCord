@@ -10,6 +10,7 @@ export interface ProviderAuthMethod {
 export interface ProviderModel {
   id: string
   label?: string
+  contextWindow?: number
 }
 
 export interface ProviderRecord {
@@ -52,6 +53,10 @@ export class ProviderRegistry {
 
   getModels(providerId: string): ProviderModel[] {
     return this.providers.get(providerId)?.models ?? []
+  }
+
+  getModel(providerId: string, modelId: string): ProviderModel | undefined {
+    return this.getModels(providerId).find((model) => model.id === modelId)
   }
 
   hasProvider(providerId: string): boolean {

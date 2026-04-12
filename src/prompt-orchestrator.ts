@@ -69,7 +69,28 @@ export async function executePromptForChannel(
     forceNewSession?: boolean
     recoveryContext?: string
   } = {},
-): Promise<{ ok: true; hadError?: boolean } | { ok: false; message: string }> {
+): Promise<
+  | {
+      ok: true
+      hadError?: boolean
+      usage?: {
+        providerId: string
+        modelId: string
+        cost: number
+        tokens: {
+          total?: number
+          input: number
+          output: number
+          reasoning: number
+          cache: {
+            read: number
+            write: number
+          }
+        }
+      }
+    }
+  | { ok: false; message: string }
+> {
   const state = stateStore.get(channelId)
   const { providerId, modelId } = selection
 
@@ -130,5 +151,9 @@ export async function executePromptForChannel(
     }
   }
 
-  return { ok: true, hadError: relayResult.hadError }
+  return {
+    ok: true,
+    hadError: relayResult.hadError,
+    usage: relayResult.usage,
+  }
 }

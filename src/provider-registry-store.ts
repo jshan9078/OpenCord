@@ -13,13 +13,16 @@ type RegistryDocument = Record<
   string,
   {
     methods?: Array<{ label: string }>
-    models?: Array<{ id: string; label?: string }>
+    models?: Array<{ id: string; label?: string; contextWindow?: number }>
   }
 >
 
 type ModelsDevModel = {
   id: string
   name?: string
+  limit?: {
+    context?: number
+  }
 }
 
 type ModelsDevProvider = {
@@ -37,7 +40,7 @@ function toRegistry(document: RegistryDocument): ProviderRegistry {
       label: method.label,
       kind: classifyAuthMethod(method.label),
     })),
-    models: (value.models || []).map((model) => ({ id: model.id, label: model.label })),
+    models: (value.models || []).map((model) => ({ id: model.id, label: model.label, contextWindow: model.contextWindow })),
   }))
   registry.setProviders(providers)
   return registry
@@ -68,6 +71,7 @@ async function fetchModelsDevRegistryDocument(): Promise<RegistryDocument> {
       models: Object.values(provider.models || {}).map((model) => ({
         id: model.id,
         label: model.name,
+        contextWindow: model.limit?.context,
       })),
     }
   }

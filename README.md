@@ -187,6 +187,8 @@ ANTHROPIC_API_KEY=sk-ant-... # Anthropic
 | `/use-model <id>` | Set default model, or override model inside a thread |
 | `/auth-connect <provider>` | OAuth flow for providers (e.g., chatgpt) |
 
+Final `/ask` replies include a Discord embed footer with the model used, token usage, approximate context usage, and cost when OpenCode reports them.
+
 ## Pricing
 Everything is free out of the box if you use the Vercel hobby tier.
 It relies on whatever subscription / providers you have on OpenCode.

@@ -90,7 +90,7 @@ As a self-hosted tool, the bridge maintains one canonical credential bundle:
 5. **Subscribe** to SSE events
 6. **Send** prompt via `POST /session/:id/prompt_async` with explicit `model.providerID` and `model.modelID`
 7. **Relay** events to Discord as they arrive
-8. **Post** final response
+8. **Post** final response with an embed footer for model, token, context, and cost summary when available
 
 ---
 

@@ -126,8 +126,9 @@ async function sendFollowup(
   content: string,
   components?: unknown[],
   threadId?: string,
+  embeds?: unknown[],
 ): Promise<void> {
-  const body: Record<string, unknown> = { content, components }
+  const body: Record<string, unknown> = { content, components, embeds }
   if (threadId) {
     body.thread_id = threadId
   }
@@ -389,6 +390,71 @@ function compactForId(text: string, max = 80): string {
     return normalized
   }
   return normalized.slice(0, max - 1)
+}
+
+function formatUsageFooter(
+  usage: {
+    providerId: string
+    modelId: string
+    cost: number
+    tokens: {
+      total?: number
+      input: number
+      output: number
+      reasoning: number
+      cache: { read: number; write: number }
+    }
+  } | undefined,
+  contextWindow?: number,
+): string | undefined {
+  if (!usage) {
+    return undefined
+  }
+
+  const totalTokens = usage.tokens.total
+    ?? usage.tokens.input + usage.tokens.output + usage.tokens.reasoning + usage.tokens.cache.read + usage.tokens.cache.write
+  const contextPercent = contextWindow && totalTokens > 0
+    ? ` | context ${(totalTokens / contextWindow * 100).toFixed(1)}%`
+    : ""
+
+  return [
+    `Model ${usage.providerId}/${usage.modelId}`,
+    `Tokens ${totalTokens.toLocaleString()}${contextPercent}`,
+    `Cost $${usage.cost.toFixed(4)}`,
+  ].join(" | ")
+}
+
+function clipEmbedDescription(text: string, limit = 4000): string {
+  return text.length > limit ? `${text.slice(0, limit - 3)}...` : text
+}
+
+async function sendFinalAskResponse(
+  interaction: Interaction,
+  threadId: string | undefined,
+  text: string,
+  usageFooter?: string,
+): Promise<void> {
+  if (usageFooter) {
+    await sendFollowup(
+      interaction.application_id,
+      interaction.token,
+      "",
+      undefined,
+      threadId,
+      [
+        {
+          description: clipEmbedDescription(text || "Done."),
+          footer: {
+            text: usageFooter,
+          },
+        },
+      ],
+    )
+    return
+  }
+
+  const clipped = text.length > 1900 ? `${text.slice(0, 1899)}...` : text
+  await sendFollowup(interaction.application_id, interaction.token, clipped || "Done.", undefined, threadId)
 }
 
 function encodeToolPayload(kind: string, toolName: string, data: string): string {
@@ -937,21 +1003,24 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
     return
   }
 
+  const usageFooter = formatUsageFooter(
+    result.hadError ? result.usage : result.usage,
+    registry.getModel(selection.providerId, selection.modelId)?.contextWindow,
+  )
+
   const text = responseBuffer.trim()
   if (result.hadError) {
     const helpMsg = "\n\nTo switch models, use `/use-provider` and `/use-model`"
     if (text) {
-      const clipped = text.length > 1750 ? `${text.slice(0, 1749)}...${helpMsg}` : text + helpMsg
-      await sendFollowup(interaction.application_id, interaction.token, clipped, undefined, threadIdForFollowups)
+      await sendFinalAskResponse(interaction, threadIdForFollowups, text + helpMsg, usageFooter)
     } else {
-      await sendFollowup(interaction.application_id, interaction.token, `Error occurred.${helpMsg}`, undefined, threadIdForFollowups)
+      await sendFinalAskResponse(interaction, threadIdForFollowups, `Error occurred.${helpMsg}`, usageFooter)
     }
   } else if (text) {
-    const clipped = text.length > 1800 ? `${text.slice(0, 1799)}...` : text
-    await sendFollowup(interaction.application_id, interaction.token, clipped, undefined, threadIdForFollowups)
+    await sendFinalAskResponse(interaction, threadIdForFollowups, text, usageFooter)
   } else {
     const suffix = toolEvents > 0 ? ` (${toolEvents} tool${toolEvents > 1 ? "s" : ""})` : ""
-    await sendFollowup(interaction.application_id, interaction.token, `Done${suffix}.`, undefined, threadIdForFollowups)
+    await sendFinalAskResponse(interaction, threadIdForFollowups, `Done${suffix}.`, usageFooter)
   }
 }
 

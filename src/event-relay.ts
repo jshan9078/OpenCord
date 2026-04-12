@@ -47,6 +47,21 @@ export interface EventRelayResult {
   timedOut: boolean
   reason: "session_complete" | "idle_timeout" | "total_timeout" | "aborted"
   hadError: boolean
+  usage?: {
+    providerId: string
+    modelId: string
+    cost: number
+    tokens: {
+      total?: number
+      input: number
+      output: number
+      reasoning: number
+      cache: {
+        read: number
+        write: number
+      }
+    }
+  }
 }
 
 function asText(value: unknown): string {
@@ -80,6 +95,43 @@ function toSummary(value: unknown): string | undefined {
 
 function firstDefined(...values: Array<unknown>): unknown {
   return values.find((value) => value !== undefined)
+}
+
+function asNumber(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0
+}
+
+function asUsage(value: unknown): EventRelayResult["usage"] | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined
+  }
+
+  const info = value as Record<string, unknown>
+  const providerId = asText(info.providerID)
+  const modelId = asText(info.modelID)
+  const tokensValue = info.tokens
+  if (!providerId || !modelId || !tokensValue || typeof tokensValue !== "object") {
+    return undefined
+  }
+
+  const tokens = tokensValue as Record<string, unknown>
+  const cache = (tokens.cache && typeof tokens.cache === "object") ? tokens.cache as Record<string, unknown> : {}
+
+  return {
+    providerId,
+    modelId,
+    cost: asNumber(info.cost),
+    tokens: {
+      total: typeof tokens.total === "number" ? tokens.total : undefined,
+      input: asNumber(tokens.input),
+      output: asNumber(tokens.output),
+      reasoning: asNumber(tokens.reasoning),
+      cache: {
+        read: asNumber(cache.read),
+        write: asNumber(cache.write),
+      },
+    },
+  }
 }
 
 export function isTerminalSessionEvent(event: EventEnvelope, hadError = false): boolean {
@@ -150,6 +202,7 @@ export async function relaySessionEvents(
   const events = client.event.subscribe({ signal: timeoutController.signal })
 
   let hadError = false
+  let usage: EventRelayResult["usage"]
 
   try {
     for await (const event of events.stream) {
@@ -169,6 +222,7 @@ export async function relaySessionEvents(
           timedOut: false,
           reason: "session_complete",
           hadError,
+          usage,
         }
       }
 
@@ -240,6 +294,14 @@ export async function relaySessionEvents(
         const errorMsg = asText(event.properties?.error) || "Session error"
         await sink.onError(errorMsg)
         hadError = true
+        continue
+      }
+
+      if (event.type === "message.updated") {
+        const nextUsage = asUsage(firstDefined(event.properties?.info, (event as unknown as Record<string, unknown>).info))
+        if (nextUsage) {
+          usage = nextUsage
+        }
       }
     }
   } finally {
@@ -255,6 +317,7 @@ export async function relaySessionEvents(
       timedOut: true,
       reason: timeoutReason,
       hadError,
+      usage,
     }
   }
 
@@ -263,5 +326,6 @@ export async function relaySessionEvents(
     timedOut: false,
     reason: "aborted",
     hadError,
+    usage,
   }
 }
