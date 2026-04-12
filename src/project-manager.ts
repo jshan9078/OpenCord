@@ -5,7 +5,7 @@
 
 import fs from "fs"
 import path from "path"
-import { getConfigDir } from "./storage-paths"
+import { getConfigDir } from "./storage-paths.js"
 
 export interface Project {
   id: string

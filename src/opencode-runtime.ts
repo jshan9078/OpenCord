@@ -6,7 +6,7 @@ import {
   classifyAuthMethod,
   type ProviderRecord,
   type ProviderRegistry,
-} from "./provider-registry"
+} from "./provider-registry.js"
 
 interface RequestOptions {
   method?: "GET" | "POST" | "PUT"

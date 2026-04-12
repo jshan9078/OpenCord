@@ -2,8 +2,8 @@
  * Resolves or creates OpenCode session for the active provider/model profile.
  * Handles session reuse across prompts in the same channel.
  */
-import type { RuntimeClientAdapter } from "./prompt-orchestrator"
-import { ChannelStateStore } from "./channel-state-store"
+import type { RuntimeClientAdapter } from "./prompt-orchestrator.js"
+import { ChannelStateStore } from "./channel-state-store.js"
 
 export async function resolveSessionForActiveProfile(
   client: RuntimeClientAdapter,

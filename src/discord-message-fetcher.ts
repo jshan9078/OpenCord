@@ -2,7 +2,7 @@
  * Fetches Discord thread messages for session recovery.
  * Used when sandbox expires to reconstruct conversation context.
  */
-import type { ChannelStateStore } from "./channel-state-store"
+import type { ChannelStateStore } from "./channel-state-store.js"
 
 export interface DiscordMessage {
   id: string

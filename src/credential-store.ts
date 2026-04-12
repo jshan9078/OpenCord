@@ -8,7 +8,7 @@
  */
 import fs from "fs"
 import crypto from "crypto"
-import { getConfigDir, getConfigPath } from "./storage-paths"
+import { getConfigDir, getConfigPath } from "./storage-paths.js"
 
 export type ProviderAuthPayload = Record<string, unknown>
 

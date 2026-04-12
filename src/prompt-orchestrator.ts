@@ -2,14 +2,14 @@
  * Orchestrates the full prompt flow: auth, session, execution, event streaming.
  * The main entry point for processing /ask commands.
  */
-import type { ChannelStateStore } from "./channel-state-store"
-import type { CredentialStore } from "./credential-store"
-import { ensureProviderAuth } from "./auth-bootstrap"
-import { resolveSessionForActiveProfile } from "./session-manager"
-import { relaySessionEvents, type EventRelaySink } from "./event-relay"
-import type { ProviderRegistry } from "./provider-registry"
-import type { OpencodeRuntime } from "./opencode-runtime"
-import { ChannelStateStore as ChannelStoreClass } from "./channel-state-store"
+import type { ChannelStateStore } from "./channel-state-store.js"
+import type { CredentialStore } from "./credential-store.js"
+import { ensureProviderAuth } from "./auth-bootstrap.js"
+import { resolveSessionForActiveProfile } from "./session-manager.js"
+import { relaySessionEvents, type EventRelaySink } from "./event-relay.js"
+import type { ProviderRegistry } from "./provider-registry.js"
+import type { OpencodeRuntime } from "./opencode-runtime.js"
+import { ChannelStateStore as ChannelStoreClass } from "./channel-state-store.js"
 
 export interface RuntimeClientAdapter {
   auth: {

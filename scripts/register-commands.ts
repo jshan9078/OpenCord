@@ -3,7 +3,7 @@
 import dotenv from "dotenv"
 dotenv.config({ path: ".env.local" })
 
-import { buildApplicationCommands } from "../src/discord-application-commands"
+import { buildApplicationCommands } from "../src/discord-application-commands.js"
 
 function usage(): string {
   return [

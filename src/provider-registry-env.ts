@@ -6,7 +6,7 @@ import {
   ProviderRegistry,
   classifyAuthMethod,
   type ProviderRecord,
-} from "./provider-registry"
+} from "./provider-registry.js"
 
 export function loadProviderRegistryFromEnv(raw = process.env.PROVIDER_REGISTRY_JSON): ProviderRegistry {
   const registry = new ProviderRegistry()

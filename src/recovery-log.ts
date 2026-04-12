@@ -3,7 +3,7 @@
  * Used to reconstruct context from channel history on session expiry.
  */
 import fs from "fs"
-import { getConfigPath, getConfigDir } from "./storage-paths"
+import { getConfigPath, getConfigDir } from "./storage-paths.js"
 
 export type RecoveryActionKind = "write" | "read" | "other"
 

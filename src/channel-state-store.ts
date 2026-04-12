@@ -3,7 +3,7 @@
  * Used by the interactions endpoint to maintain conversation context across requests.
  */
 import fs from "fs"
-import { getConfigDir, getConfigPath } from "./storage-paths"
+import { getConfigDir, getConfigPath } from "./storage-paths.js"
 
 export interface ChannelState {
   channelId: string

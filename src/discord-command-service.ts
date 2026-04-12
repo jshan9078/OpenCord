@@ -2,10 +2,10 @@
  * Executes parsed commands against channel state, providers, and credentials.
  * Handles /providers, /models, /use-provider, /use-model, /project, /auth, etc.
  */
-import { commandHelpText, parseDiscordCommand } from "./command-parser"
-import type { ChannelStateStore } from "./channel-state-store"
-import type { CredentialStore } from "./credential-store"
-import type { ProviderRegistry } from "./provider-registry"
+import { commandHelpText, parseDiscordCommand } from "./command-parser.js"
+import type { ChannelStateStore } from "./channel-state-store.js"
+import type { CredentialStore } from "./credential-store.js"
+import type { ProviderRegistry } from "./provider-registry.js"
 
 export interface CommandContext {
   channelId: string

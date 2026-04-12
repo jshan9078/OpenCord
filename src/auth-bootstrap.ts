@@ -2,10 +2,10 @@
  * Bootstraps provider credentials into OpenCode session.
  * Checks stored credentials, syncs to runtime, returns auth status.
  */
-import type { RuntimeClientAdapter } from "./prompt-orchestrator"
-import type { CredentialStore } from "./credential-store"
-import type { ProviderRegistry } from "./provider-registry"
-import { ChannelStateStore } from "./channel-state-store"
+import type { RuntimeClientAdapter } from "./prompt-orchestrator.js"
+import type { CredentialStore } from "./credential-store.js"
+import type { ProviderRegistry } from "./provider-registry.js"
+import { ChannelStateStore } from "./channel-state-store.js"
 
 export type AuthResult =
   | { type: "ok" }
