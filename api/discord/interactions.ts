@@ -438,6 +438,18 @@ async function sendInitialResponse(
   })
 }
 
+async function updateOriginalResponse(
+  applicationId: string,
+  token: string,
+  content: string,
+): Promise<void> {
+  await fetch(`https://discord.com/api/v10/webhooks/${applicationId}/${token}/messages/@original`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content }),
+  }).catch(() => null)
+}
+
 function compactForId(text: string, max = 80): string {
   const normalized = text.replace(/\s+/g, " ").trim()
   if (normalized.length <= max) {
@@ -1003,6 +1015,14 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
           sessionByProfile: {},
         })
       }
+    }
+
+    if (!commandIsInThread && threadId) {
+      await updateOriginalResponse(
+        interaction.application_id,
+        interaction.token,
+        `Working in <#${threadId}>...`,
+      )
     }
 
   // If no thread and no message ID, we'll use channel-level followups

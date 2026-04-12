@@ -257,6 +257,7 @@ export async function relaySessionEvents(
   let usage: EventRelayResult["usage"]
   let sawTextDelta = false
   let emittedFallbackText = false
+  const lastTextByPart = new Map<string, string>()
 
   try {
     for await (const event of events.stream) {
@@ -282,11 +283,36 @@ export async function relaySessionEvents(
 
       if (event.type === "message.part.delta") {
         sawTextDelta = true
-        await sink.onTextDelta(asText(event.properties?.text))
+        const delta = asText(firstDefined(event.properties?.delta, event.properties?.text))
+        if (delta) {
+          await sink.onTextDelta(delta)
+        }
         continue
       }
 
       if (event.type === "message.part.updated") {
+        const part = (event.properties?.part && typeof event.properties.part === "object")
+          ? event.properties.part as Record<string, unknown>
+          : undefined
+
+        if (part?.type === "text") {
+          const partId = asText(firstDefined(part.id, part.partID, event.properties?.partID))
+          const nextText = asText(part.text)
+          if (nextText) {
+            if (sawTextDelta) {
+              lastTextByPart.set(partId || "", nextText)
+            } else {
+              const previous = lastTextByPart.get(partId || "") || ""
+              if (nextText.length > previous.length && nextText.startsWith(previous)) {
+                await sink.onTextDelta(nextText.slice(previous.length))
+              } else if (nextText !== previous) {
+                await sink.onTextDelta(nextText)
+              }
+              lastTextByPart.set(partId || "", nextText)
+            }
+          }
+        }
+
         const tool = asText(
           firstDefined(
             event.properties?.toolName,
