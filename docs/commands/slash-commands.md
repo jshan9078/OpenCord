@@ -146,7 +146,7 @@ Behavior:
 Start OAuth flow for a provider (e.g., ChatGPT Pro/Plus).
 
 ```
-/auth-connect chatgpt
+/auth-connect openai
 ```
 
 **Options:**

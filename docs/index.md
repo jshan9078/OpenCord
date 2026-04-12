@@ -62,7 +62,7 @@ Format: `{PROVIDER}_API_KEY` (uppercase)
 
 **OAuth:**
 ```bash
-/auth-connect chatgpt
+/auth-connect openai
 # Follow the URL/code in Discord
 # Run again after completing
 ```

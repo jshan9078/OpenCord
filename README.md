@@ -171,9 +171,9 @@ ANTHROPIC_API_KEY=sk-ant-... # Anthropic
 
 **Option 2: OAuth (e.g., ChatGPT Pro/Plus)**
 ```bash
-/auth-connect chatgpt
+/auth-connect openai
 # Follow the URL/code displayed in Discord
-# Run /auth-connect chatgpt again after completing
+# Run /auth-connect openai again after completing
 ```
 
 ## Commands
@@ -191,7 +191,7 @@ ANTHROPIC_API_KEY=sk-ant-... # Anthropic
 | `/models [provider]` | List available models (provider autocomplete) |
 | `/use-provider <id>` | Set default provider, or override provider inside a thread |
 | `/use-model <id>` | Set default model, or override model inside a thread |
-| `/auth-connect <provider>` | OAuth flow for providers (e.g., chatgpt) |
+| `/auth-connect <provider>` | OAuth flow for providers (e.g., openai) |
 
 Final `/ask` replies include a Discord embed footer with the model used, token usage, approximate context usage, and cost when OpenCode reports them.
 

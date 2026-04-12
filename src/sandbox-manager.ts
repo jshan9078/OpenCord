@@ -43,13 +43,6 @@ const DEFAULT_OPTIONS: Required<SandboxManagerOptions> = {
 const OPENCODE_PORT = 4096
 const OPENCODE_CONFIG_BLOB_PATH = "opencode-config/config-bundle.json"
 
-function resolveRuntimeProviderId(providerId: string): string {
-  if (providerId === "chatgpt") {
-    return "openai"
-  }
-  return providerId
-}
-
 export class SandboxManager {
   private readonly options: Required<SandboxManagerOptions>
   private readonly cache = new Map<string, SandboxContext>()
@@ -377,9 +370,15 @@ export class SandboxManager {
 
   async startOAuth(channelId: string, providerId: string, method?: number): Promise<OAuthStartResult> {
     const context = await this.getOrCreate(channelId, undefined)
-    const runtimeProviderId = resolveRuntimeProviderId(providerId)
-    const url = `${context.opencodeBaseUrl}/provider/${runtimeProviderId}/oauth/authorize`
-    const body = JSON.stringify({ method: method ?? 0 })
+    const url = `${context.opencodeBaseUrl}/provider/${providerId}/oauth/authorize`
+    const resolvedMethod = await this.resolveOAuthMethodIndex(context, providerId, method)
+    if (resolvedMethod === undefined) {
+      return {
+        success: false,
+        message: `Provider '${providerId}' has no OAuth method available.`,
+      }
+    }
+    const body = JSON.stringify({ method: resolvedMethod })
 
     const response = await fetch(url, {
       method: "POST",
@@ -395,7 +394,16 @@ export class SandboxManager {
       return { success: false, message: `OAuth start failed: ${response.status}${details ? ` ${details}` : ""}` }
     }
 
-    const data = (await response.json()) as {
+    const payload = (await response.json()) as {
+      url?: string
+      verification_uri?: string
+      verification_url?: string
+      verificationUri?: string
+      user_code?: string
+      userCode?: string
+      instructions?: string
+      device_auth_id?: string
+      deviceAuthId?: string
       data?: {
         url?: string
         verification_uri?: string
@@ -408,7 +416,7 @@ export class SandboxManager {
         deviceAuthId?: string
       }
     }
-    const result = data.data || {}
+    const result = payload.data || payload
     const urlValue =
       result.url
       || result.verification_uri
@@ -435,14 +443,20 @@ export class SandboxManager {
   async completeOAuth(
     channelId: string,
     providerId: string,
-    method: number,
+    method: number | undefined,
     deviceAuthId?: string,
   ): Promise<OAuthCompleteResult> {
     const context = await this.getOrCreate(channelId, undefined)
-    const runtimeProviderId = resolveRuntimeProviderId(providerId)
+    const resolvedMethod = await this.resolveOAuthMethodIndex(context, providerId, method)
+    if (resolvedMethod === undefined) {
+      return {
+        success: false,
+        message: `Provider '${providerId}' has no OAuth method available.`,
+      }
+    }
 
-    const url = `${context.opencodeBaseUrl}/provider/${runtimeProviderId}/oauth/callback`
-    const body = JSON.stringify({ method, device_auth_id: deviceAuthId })
+    const url = `${context.opencodeBaseUrl}/provider/${providerId}/oauth/callback`
+    const body = JSON.stringify({ method: resolvedMethod, device_auth_id: deviceAuthId })
 
     const response = await fetch(url, {
       method: "POST",
@@ -454,16 +468,12 @@ export class SandboxManager {
     })
 
     if (!response.ok) {
-      return { success: false, message: `OAuth callback failed: ${response.status}` }
+      const details = await response.text().catch(() => "")
+      return { success: false, message: `OAuth callback failed: ${response.status}${details ? ` ${details}` : ""}` }
     }
 
-    const data = (await response.json()) as { data?: Record<string, unknown> }
-    const tokens = data.data
-
-    if (tokens) {
-      // Save tokens directly to sandbox filesystem
-      await this.saveCredentialsToSandbox(context.sandboxId, providerId, tokens)
-    }
+    await response.text().catch(() => "")
+    const tokens = await this.readProviderAuthFromSandbox(context.sandboxId, providerId)
 
     return {
       success: true,
@@ -471,32 +481,62 @@ export class SandboxManager {
     }
   }
 
-  private async saveCredentialsToSandbox(sandboxId: string, providerId: string, tokens: Record<string, unknown>): Promise<void> {
+  private async readProviderAuthFromSandbox(
+    sandboxId: string,
+    runtimeProviderId: string,
+  ): Promise<Record<string, unknown> | undefined> {
     try {
       const sandbox = await Sandbox.get({ sandboxId })
-
-      // Read existing credentials
-      let existing: Record<string, Record<string, unknown>> = {}
-      try {
-        const content = await sandbox.readFileToBuffer({ path: "/vercel/sandbox/.opencode-credentials.json" })
-        if (content) {
-          existing = JSON.parse(content.toString())
-        }
-      } catch {
-        // No existing credentials
+      const content = await sandbox.readFileToBuffer({ path: "/home/vercel-sandbox/.local/share/opencode/auth.json" })
+      if (!content) {
+        return undefined
       }
 
-      // Add new provider credentials
-      existing[providerId] = tokens
+      const all = JSON.parse(content.toString("utf-8")) as Record<string, unknown>
+      const entry = all[runtimeProviderId] ?? all[`${runtimeProviderId}/`]
+      if (!entry || typeof entry !== "object") {
+        return undefined
+      }
 
-      // Write back
-      await sandbox.writeFiles([
-        { path: "/vercel/sandbox/.opencode-credentials.json", content: Buffer.from(JSON.stringify(existing, null, 2)) },
-      ])
-      console.log(`[SandboxManager] Saved OAuth tokens for '${providerId}' to sandbox`)
-    } catch (error) {
-      console.error(`[SandboxManager] Failed to save credentials to sandbox:`, error)
+      return entry as Record<string, unknown>
+    } catch {
+      return undefined
     }
+  }
+
+  private async resolveOAuthMethodIndex(
+    context: SandboxContext,
+    runtimeProviderId: string,
+    explicitMethod?: number,
+  ): Promise<number | undefined> {
+    if (explicitMethod !== undefined) {
+      return explicitMethod
+    }
+
+    const response = await fetch(`${context.opencodeBaseUrl}/provider/auth`, {
+      headers: {
+        Authorization: `Basic ${Buffer.from(`opencode:${context.opencodePassword}`).toString("base64")}`,
+      },
+    }).catch(() => null)
+
+    if (!response?.ok) {
+      return 0
+    }
+
+    const payload = (await response.json()) as {
+      data?: Record<string, Array<{ label?: string }>>
+    }
+    const methods = payload.data?.[runtimeProviderId] || []
+    if (methods.length === 0) {
+      return 0
+    }
+
+    const oauthIndex = methods.findIndex((method) => {
+      const label = (method.label || "").toLowerCase()
+      return label.includes("oauth") || label.includes("device") || label.includes("headless") || label.includes("browser")
+    })
+
+    return oauthIndex >= 0 ? oauthIndex : undefined
   }
 
   async stop(channelId: string): Promise<void> {

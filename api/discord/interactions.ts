@@ -686,10 +686,10 @@ async function handleAuthConnect(interaction: Interaction, text: string): Promis
   if (!providerId) {
     return json({
       type: 4,
-      data: {
-        content: "Usage: `/auth-connect <provider>`\nExample: `/auth-connect chatgpt`",
-      },
-    })
+        data: {
+          content: "Usage: `/auth-connect <provider>`\nExample: `/auth-connect openai`",
+        },
+      })
   }
 
   const sandboxManager = getSandboxManager()
@@ -700,19 +700,23 @@ async function handleAuthConnect(interaction: Interaction, text: string): Promis
       const completeResult: OAuthCompleteResult = await sandboxManager.completeOAuth(
         channelId,
         providerId,
-        0,
+        undefined,
         state.pendingOAuth.deviceAuthId,
       )
 
-      if (completeResult.success && completeResult.tokens) {
-        await oauthStore.setUserProviderAuth(userId, providerId, completeResult.tokens)
+      if (completeResult.success) {
+        if (completeResult.tokens) {
+          await oauthStore.setUserProviderAuth(userId, providerId, completeResult.tokens)
+        }
         state.pendingOAuth = undefined
         stateStore.set(state)
 
         return json({
           type: 4,
           data: {
-            content: `✅ Successfully connected to **${providerId}**!\n\nCredentials are now saved for your user and will be reused across sandbox sessions.`,
+            content: completeResult.tokens
+              ? `✅ Successfully connected to **${providerId}**!\n\nCredentials are now saved for your user and will be reused across sandbox sessions.`
+              : `✅ Successfully connected to **${providerId}**!\n\nOAuth is active in the current sandbox.`,
           },
         })
       }

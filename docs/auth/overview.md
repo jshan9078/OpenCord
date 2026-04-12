@@ -48,12 +48,12 @@ Format: `{PROVIDER}_API_KEY` (uppercase, underscores)
 
 Run in Discord:
 ```
-/auth-connect chatgpt
+/auth-connect openai
 ```
 
-Follow the URL/code displayed, then run `/auth-connect chatgpt` again to complete.
+Follow the URL/code displayed, then run `/auth-connect openai` again to complete.
 
-Credentials are stored in the sandbox filesystem and persist across prompts.
+Credentials are saved in private Blob storage per user+provider and reused across sandbox sessions.
 
 ## Token Refresh
 

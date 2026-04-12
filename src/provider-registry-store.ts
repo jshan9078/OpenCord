@@ -32,28 +32,14 @@ type ModelsDevProvider = {
 
 let cachedRegistry: { registry: ProviderRegistry; expiresAt: number } | undefined
 
-function enrichChatgptModels(document: RegistryDocument): RegistryDocument {
-  const chatgpt = document.chatgpt
-  const openai = document.openai
-  if (!chatgpt || !openai) {
-    return document
-  }
-
-  if ((chatgpt.models || []).length > 0) {
-    return document
-  }
-
-  return {
-    ...document,
-    chatgpt: {
-      ...chatgpt,
-      models: [...(openai.models || [])],
-    },
-  }
+function normalizeRegistryDocument(document: RegistryDocument): RegistryDocument {
+  const normalized = { ...document }
+  delete normalized.chatgpt
+  return normalized
 }
 
 function toRegistry(document: RegistryDocument): ProviderRegistry {
-  const normalized = enrichChatgptModels(document)
+  const normalized = normalizeRegistryDocument(document)
   const registry = new ProviderRegistry()
   const providers: ProviderRecord[] = Object.entries(normalized).map(([id, value]) => ({
     id,
@@ -68,9 +54,6 @@ function toRegistry(document: RegistryDocument): ProviderRegistry {
 }
 
 function methodLabels(providerId: string, envVars: string[] | undefined): string[] {
-  if (providerId === "chatgpt") {
-    return ["OAuth (device flow)"]
-  }
   if (!envVars || envVars.length === 0) {
     return ["No auth"]
   }
@@ -97,14 +80,7 @@ async function fetchModelsDevRegistryDocument(): Promise<RegistryDocument> {
     }
   }
 
-  if (!document.chatgpt) {
-    document.chatgpt = {
-      methods: [{ label: "OAuth (device flow)" }],
-      models: [],
-    }
-  }
-
-  return enrichChatgptModels(document)
+  return normalizeRegistryDocument(document)
 }
 
 async function fetchStoredRegistryDocument(): Promise<{ document: RegistryDocument; url: string } | undefined> {

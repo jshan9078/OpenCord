@@ -15,15 +15,7 @@ interface RegistryProvider {
   models: Array<{ id: string; label?: string }>
 }
 
-const OAUTH_PROVIDER_LABELS: Record<string, string[]> = {
-  chatgpt: ["OAuth (device flow)"],
-}
-
 function methodLabels(providerId: string, envVars: string[] | undefined): string[] {
-  const oauth = OAUTH_PROVIDER_LABELS[providerId]
-  if (oauth) {
-    return oauth
-  }
   if (!envVars || envVars.length === 0) {
     return ["No auth"]
   }
@@ -46,14 +38,6 @@ async function main(): Promise<void> {
         id: model.id,
         label: model.name,
       })),
-    }
-  }
-
-  // Add bridge-specific auth-only providers that may not appear in models.dev.
-  if (!registry.chatgpt) {
-    registry.chatgpt = {
-      methods: [{ label: "OAuth (device flow)" }],
-      models: [],
     }
   }
 
