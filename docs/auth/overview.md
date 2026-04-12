@@ -4,40 +4,45 @@ The bridge manages credentials for providers (OpenAI, Anthropic, etc.) and GitHu
 
 ## Design Principles
 
-1. **Host-local only** - No credentials ever sent through Discord
-2. **Single-user** - One canonical credential bundle per provider
-3. **Encrypted storage** - Credentials stored with BRIDGE_SECRET key
-4. **Provider-agnostic** - Works with any auth method OpenCode supports
+1. **Via environment variables** - No secrets ever sent through Discord
+2. **Single-user** - One canonical credential set
+3. **Provider-agnostic** - Works with any auth method OpenCode supports
 
-## Credential Storage
+## Credential Sources
 
-Credentials are stored in `~/.cache/opencode-chat-bridge/credentials.json` (or `SESSION_BASE_DIR`):
+The bridge checks credentials in this order:
 
-```typescript
-// credential-store.ts
-interface CredentialBundle {
-  [providerId: string]: {
-    // OAuth tokens
-    access_token?: string
-    refresh_token?: string
-    expires_at?: number
-    // API keys
-    api_key?: string
-    // Auth method used
-    method: string
-  }
-  // GitHub
-  github?: string
-}
+### 1. Environment Variables (API Keys)
+
+For providers that use API keys, set env vars in Vercel:
+
+```
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+GOOGLE_GENERATIVEAI_API_KEY=...
 ```
 
-Encrypted with AES-256-GCM using a key derived from `BRIDGE_SECRET`.
+Format: `{PROVIDER}_API_KEY` (uppercase, underscores)
+
+### 2. GitHub Token
+
+```
+GITHUB_TOKEN=ghp_...
+```
+
+### 3. Encrypted File (Advanced)
+
+For OAuth tokens that can't be passed via env vars, you can use the credential store.
 
 ## Auth Methods
 
 OpenCode supports multiple auth methods per provider:
 
 | Method | Description | Storage |
+|--------|-------------|---------|
+| `api-key` | Direct API key | Env var `{PROVIDER}_API_KEY` |
+| `oauth` | OAuth flow | Not yet supported via env vars |
+| `none` | No auth required | (free models) |
 |--------|-------------|---------|
 | `oauth` | OAuth flow with refresh tokens | access_token, refresh_token |
 | `api-key` | Direct API key | api_key |

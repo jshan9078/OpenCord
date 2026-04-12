@@ -62,8 +62,14 @@ pnpm run deploy  # or `vercel deploy --prod`
 # Set these environment variables in Vercel:
 export DISCORD_APPLICATION_ID=...  # Discord application ID
 export DISCORD_PUBLIC_KEY=...     # Discord app public key (hex)
-export BRIDGE_SECRET=...          # >= 16 chars, for encrypted credential store
-export GITHUB_TOKEN=...           # GitHub personal access token (for repo/branch selection)
+export BRIDGE_SECRET=...          # >= 16 chars, for encrypting credentials
+export GITHUB_TOKEN=...           # GitHub personal access token
+
+# Provider API keys (optional - set for providers you want to use):
+export OPENAI_API_KEY=sk-...      # OpenAI API key
+export ANTHROPIC_API_KEY=sk-ant-... # Anthropic API key
+export GOOGLE_GENERATIVEAI_API_KEY=... # Google AI API key
+# etc - format: {PROVIDER}_API_KEY
 ```
 
 ### Register Discord Commands
@@ -83,23 +89,32 @@ DISCORD_APPLICATION_ID=... pnpm exec bun scripts/register-commands.ts
 
 ---
 
-## Step 3.1: Configure Auth Locally (no secrets in Discord)
+## Step 3.1: Configure Auth (via Environment Variables)
 
-All secrets are entered on the bridge host, never in Discord messages or DMs.
+All provider credentials are set as environment variables in Vercel - no secrets in Discord.
 
-```bash
-# Check auth status
-pnpm exec bun scripts/auth.ts status
+### API Keys
 
-# OAuth/device/browser providers (OpenAI and others)
-pnpm exec bun scripts/auth.ts connect openai
+For providers that use API keys (OpenAI, Anthropic, Google, etc.), just set the env var:
 
-# API key providers (read from stdin)
-printf %s "$ANTHROPIC_API_KEY" | pnpm exec bun scripts/auth.ts set-key anthropic --stdin
-
-# GitHub token (read from stdin)
-printf %s "$GITHUB_TOKEN" | pnpm exec bun scripts/auth.ts github --stdin
 ```
+# In Vercel dashboard → Settings → Environment Variables
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+GOOGLE_GENERATIVEAI_API_KEY=...
+```
+
+Format: `{PROVIDER}_API_KEY` (uppercase, underscores)
+
+### OAuth Providers
+
+For OAuth-based providers (ChatGPT Pro/Plus, etc.), you need to get tokens manually. The flow is:
+
+1. User authenticates on their machine (outside Discord)
+2. Tokens get stored somehow
+3. Bridge passes tokens to sandbox
+
+This requires more setup - check the auth docs for details.
 
 ---
 

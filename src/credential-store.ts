@@ -1,6 +1,10 @@
 /**
  * Encrypted storage for provider auth tokens and GitHub credentials.
  * Keys are derived from BRIDGE_SECRET - credentials never leave the host.
+ * 
+ * Supports two sources:
+ * 1. Env vars: {PROVIDER}_API_KEY (e.g., OPENAI_API_KEY, ANTHROPIC_API_KEY)
+ * 2. Env var: PROVIDER_AUTH_BUNDLE (encrypted JSON from auth.ts export)
  */
 import fs from "fs"
 import crypto from "crypto"
@@ -91,16 +95,17 @@ export class CredentialStore {
   load(): CredentialBundle {
     ensureConfigDir()
     const file = credentialFilePath()
-    if (!fs.existsSync(file)) {
-      return defaultBundle()
+    if (fs.existsSync(file)) {
+      const raw = fs.readFileSync(file, "utf-8")
+      const record = JSON.parse(raw) as EncryptedCredentialRecord
+      const bundle = decrypt(this.secret, record)
+      bundle.providers ||= {}
+      bundle.updatedAt ||= Date.now()
+      return bundle
     }
 
-    const raw = fs.readFileSync(file, "utf-8")
-    const record = JSON.parse(raw) as EncryptedCredentialRecord
-    const bundle = decrypt(this.secret, record)
-    bundle.providers ||= {}
-    bundle.updatedAt ||= Date.now()
-    return bundle
+    // No file - return empty bundle (env vars will be checked at read time)
+    return defaultBundle()
   }
 
   save(bundle: CredentialBundle): void {
@@ -115,6 +120,13 @@ export class CredentialStore {
   }
 
   getProviderAuth(providerId: string): ProviderAuthPayload | undefined {
+    // First check env var for API key
+    const envApiKey = process.env[`${providerId.toUpperCase()}_API_KEY`]
+    if (envApiKey) {
+      return { type: "api-key", api_key: envApiKey }
+    }
+
+    // Fall back to stored credentials
     const bundle = this.load()
     return bundle.providers[providerId]
   }
@@ -140,6 +152,11 @@ export class CredentialStore {
   }
 
   getGithubToken(): string | undefined {
+    // First check env var
+    if (process.env.GITHUB_TOKEN) {
+      return process.env.GITHUB_TOKEN
+    }
+    // Fall back to stored
     return this.load().githubToken
   }
 

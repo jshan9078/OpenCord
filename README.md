@@ -58,31 +58,25 @@ In Vercel dashboard, set:
 | `GITHUB_TOKEN` | GitHub personal access token |
 | `BRIDGE_SECRET` | Random string (16+ chars) for encrypting credentials |
 
+**Provider API keys** (optional - add for providers you want to use):
+- `OPENAI_API_KEY`
+- `ANTHROPIC_API_KEY`
+- etc.
+
 No OpenCode URL needed - the bridge creates sandboxes and runs OpenCode automatically.
 
 ### 4. Register Slash Commands
 
 ```bash
-DISCORD_APPLICATION_ID=xxx DISCORD_BOT_TOKEN=xxx pnpm exec bun scripts/register-commands.ts
+DISCORD_APPLICATION_ID=xxx pnpm exec bun scripts/register-commands.ts
 ```
 
-### 5. Set Up Auth (Host-Local)
+### 5. Set Provider API Keys (Optional)
 
-Credentials never go through Discord. Run on your machine:
-
-```bash
-# Check auth status
-pnpm exec bun scripts/auth.ts status
-
-# Connect OAuth provider
-pnpm exec bun scripts/auth.ts connect openai
-
-# Or set API key
-printf %s "$ANTHROPIC_API_KEY" | pnpm exec bun scripts/auth.ts set-key anthropic --stdin
-
-# GitHub token
-printf %s "$GITHUB_TOKEN" | pnpm exec bun scripts/auth.ts github --stdin
-```
+Add provider API keys as environment variables in Vercel:
+- `OPENAI_API_KEY`
+- `ANTHROPIC_API_KEY`
+- etc.
 
 ## Commands
 
