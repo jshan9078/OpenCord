@@ -920,38 +920,54 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
   // Create or reuse thread for this conversation
     let threadId = commandIsInThread ? channelId : channelState.threadId
 
-    if (!threadId && messageId) {
-    // Create a new thread from the command message
-    const threadName = `OpenCode: ${prompt.slice(0, 50)}${prompt.length > 50 ? "..." : ""}`
-    const threadResponse = await fetch(
-      `https://discord.com/api/v10/channels/${channelId}/messages/${messageId}/threads`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
-        },
-        body: JSON.stringify({
-          name: threadName,
-          auto_archive_duration: 1440, // 24 hours
-        }),
-      },
-    ).catch(() => null)
+    if (!threadId) {
+      const threadName = `OpenCode: ${prompt.slice(0, 50)}${prompt.length > 50 ? "..." : ""}`
 
-    if (threadResponse?.ok) {
-      const thread = (await threadResponse.json()) as { id: string }
-      threadId = thread.id
-      channelState.threadId = threadId
-      stateStore.set(channelState)
-      stateStore.set({
-        channelId: threadId,
-        repoUrl: channelState.repoUrl,
-        branch: channelState.branch,
-        projectName: channelState.projectName,
-        sessionByProfile: {},
-      })
+      const threadResponse = messageId
+        ? await fetch(
+          `https://discord.com/api/v10/channels/${channelId}/messages/${messageId}/threads`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
+            },
+            body: JSON.stringify({
+              name: threadName,
+              auto_archive_duration: 1440,
+            }),
+          },
+        ).catch(() => null)
+        : await fetch(
+          `https://discord.com/api/v10/channels/${channelId}/threads`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
+            },
+            body: JSON.stringify({
+              name: threadName,
+              auto_archive_duration: 1440,
+              type: 11,
+            }),
+          },
+        ).catch(() => null)
+
+      if (threadResponse?.ok) {
+        const thread = (await threadResponse.json()) as { id: string }
+        threadId = thread.id
+        channelState.threadId = threadId
+        stateStore.set(channelState)
+        stateStore.set({
+          channelId: threadId,
+          repoUrl: channelState.repoUrl,
+          branch: channelState.branch,
+          projectName: channelState.projectName,
+          sessionByProfile: {},
+        })
+      }
     }
-  }
 
   // If no thread and no message ID, we'll use channel-level followups
   const effectiveThreadId = threadId || undefined

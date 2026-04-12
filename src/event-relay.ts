@@ -134,6 +134,58 @@ function asUsage(value: unknown): EventRelayResult["usage"] | undefined {
   }
 }
 
+function extractTextFromMessageUpdated(properties: Record<string, unknown> | undefined): string {
+  if (!properties) {
+    return ""
+  }
+
+  const direct = asText(firstDefined(properties.text, properties.content))
+  if (direct) {
+    return direct
+  }
+
+  const part = properties.part
+  if (part && typeof part === "object") {
+    const partText = asText((part as Record<string, unknown>).text)
+    if (partText) {
+      return partText
+    }
+  }
+
+  const extractFromParts = (partsValue: unknown): string => {
+    if (!Array.isArray(partsValue)) {
+      return ""
+    }
+    const chunks = partsValue
+      .map((item) => {
+        if (!item || typeof item !== "object") {
+          return ""
+        }
+        const row = item as Record<string, unknown>
+        return row.type === "text" ? asText(row.text) : ""
+      })
+      .filter(Boolean)
+    return chunks.join("")
+  }
+
+  const fromParts = extractFromParts(properties.parts)
+  if (fromParts) {
+    return fromParts
+  }
+
+  const message = properties.message
+  if (message && typeof message === "object") {
+    const msg = message as Record<string, unknown>
+    const msgText = asText(firstDefined(msg.text, msg.content))
+    if (msgText) {
+      return msgText
+    }
+    return extractFromParts(msg.parts)
+  }
+
+  return ""
+}
+
 export function isTerminalSessionEvent(event: EventEnvelope, hadError = false): boolean {
   if (event.type === "session.completed" || event.type === "session.idle") {
     return true
@@ -203,6 +255,8 @@ export async function relaySessionEvents(
 
   let hadError = false
   let usage: EventRelayResult["usage"]
+  let sawTextDelta = false
+  let emittedFallbackText = false
 
   try {
     for await (const event of events.stream) {
@@ -227,6 +281,7 @@ export async function relaySessionEvents(
       }
 
       if (event.type === "message.part.delta") {
+        sawTextDelta = true
         await sink.onTextDelta(asText(event.properties?.text))
         continue
       }
@@ -298,6 +353,15 @@ export async function relaySessionEvents(
       }
 
       if (event.type === "message.updated") {
+        const status = asStatus(event.properties?.status)
+        if (!sawTextDelta && !emittedFallbackText && ["complete", "completed", "done", "finished"].includes(status)) {
+          const finalText = extractTextFromMessageUpdated(event.properties)
+          if (finalText) {
+            emittedFallbackText = true
+            await sink.onTextDelta(finalText)
+          }
+        }
+
         const nextUsage = asUsage(firstDefined(event.properties?.info, (event as unknown as Record<string, unknown>).info))
         if (nextUsage) {
           usage = nextUsage
