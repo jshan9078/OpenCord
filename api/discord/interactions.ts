@@ -1,13 +1,26 @@
 import nacl from "tweetnacl"
 import { waitUntil } from "@vercel/functions"
-import { ChannelStateStore } from "../../src/channel-state-store"
-import { CredentialStore } from "../../src/credential-store"
-import { handleDiscordCommand } from "../../src/discord-command-service"
-import { mapInteractionCommandToText } from "../../src/interaction-command-mapper"
-import { GitHubClient, getGitHubClient } from "../../src/github-client"
-import { getRecoveryContext } from "../../src/discord-message-fetcher"
-import { loadProviderRegistryFromEnv } from "../../src/provider-registry-env"
-import type { SandboxContext, OAuthStartResult, OAuthCompleteResult } from "../../src/sandbox-manager"
+
+type SandboxContext = {
+  sandboxId: string
+  opencodeBaseUrl: string
+  opencodePassword: string
+}
+
+type OAuthStartResult = {
+  success?: boolean
+  message?: string
+  url?: string
+  userCode?: string
+  instructions?: string
+  deviceAuthId?: string
+}
+
+type OAuthCompleteResult = {
+  success: boolean
+  message?: string
+  tokens?: Record<string, unknown>
+}
 
 type Interaction = {
   id: string
@@ -215,6 +228,10 @@ async function handleToolButtonInteraction(interaction: Interaction): Promise<Re
 }
 
 async function handleProjectSelectMenu(interaction: Interaction): Promise<Response> {
+  const [{ getGitHubClient }, { ChannelStateStore }] = await Promise.all([
+    import("../../src/github-client.js"),
+    import("../../src/channel-state-store.js"),
+  ])
   const customId = interaction.data?.custom_id
   const selectedValue = interaction.data?.values?.[0]
 
@@ -285,7 +302,10 @@ async function handleProjectSelectMenu(interaction: Interaction): Promise<Respon
 }
 
 async function handleAuthConnect(interaction: Interaction, text: string): Promise<Response> {
-  const { getSandboxManager } = await import("../../src/sandbox-manager")
+  const [{ getSandboxManager }, { ChannelStateStore }] = await Promise.all([
+    import("../../src/sandbox-manager.js"),
+    import("../../src/channel-state-store.js"),
+  ])
   const channelId = interaction.channel_id
   if (!channelId) {
     return json({ type: 4, data: { content: "This command must be used in a channel." } })
@@ -389,6 +409,7 @@ async function handleAuthConnect(interaction: Interaction, text: string): Promis
 }
 
 async function handleProjectCommand(interaction: Interaction): Promise<Response> {
+  const { getGitHubClient } = await import("../../src/github-client.js")
   const gh = getGitHubClient()
   if (!gh) {
     return json({
@@ -432,11 +453,22 @@ async function handleProjectCommand(interaction: Interaction): Promise<Response>
 }
 
 async function processAskInteraction(interaction: Interaction, prompt: string): Promise<void> {
-  const [{ OpencodeRuntime }, { executePromptForChannel }, { getSandboxManager }, { loadProviderRegistryFromEnv }] = await Promise.all([
-    import("../../src/opencode-runtime"),
-    import("../../src/prompt-orchestrator"),
-    import("../../src/sandbox-manager"),
-    import("../../src/provider-registry-env"),
+  const [
+    { ChannelStateStore },
+    { CredentialStore },
+    { OpencodeRuntime },
+    { executePromptForChannel },
+    { getSandboxManager },
+    { getRecoveryContext },
+    { loadProviderRegistryFromEnv },
+  ] = await Promise.all([
+    import("../../src/channel-state-store.js"),
+    import("../../src/credential-store.js"),
+    import("../../src/opencode-runtime.js"),
+    import("../../src/prompt-orchestrator.js"),
+    import("../../src/sandbox-manager.js"),
+    import("../../src/discord-message-fetcher.js"),
+    import("../../src/provider-registry-env.js"),
   ])
 
   const channelId = interaction.channel_id
@@ -679,6 +711,14 @@ export default async function handler(
       await sendNodeResponse(res, json({ type: 4, data: { content: "Unsupported interaction type." } }))
       return
     }
+
+    const [{ mapInteractionCommandToText }, { loadProviderRegistryFromEnv }, { ChannelStateStore }, { CredentialStore }, { handleDiscordCommand }] = await Promise.all([
+      import("../../src/interaction-command-mapper.js"),
+      import("../../src/provider-registry-env.js"),
+      import("../../src/channel-state-store.js"),
+      import("../../src/credential-store.js"),
+      import("../../src/discord-command-service.js"),
+    ])
 
     const mapped = mapInteractionCommandToText(interaction.data)
 
