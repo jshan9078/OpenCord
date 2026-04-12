@@ -8,7 +8,7 @@ import { OpencodeRuntime } from "../../src/opencode-runtime"
 import { executePromptForChannel } from "../../src/prompt-orchestrator"
 import { loadProviderRegistryFromEnv } from "../../src/provider-registry-env"
 import { GitHubClient, getGitHubClient } from "../../src/github-client"
-import { getSandboxManager, type SandboxContext } from "../../src/sandbox-manager"
+import { getSandboxManager, type SandboxContext, type OAuthStartResult, type OAuthCompleteResult } from "../../src/sandbox-manager"
 
 type Interaction = {
   id: string
@@ -237,6 +237,112 @@ async function handleProjectSelectMenu(interaction: Interaction): Promise<Respon
   return json({ type: 4, data: { content: "Unknown project selection." } })
 }
 
+async function handleAuthConnect(interaction: Interaction, text: string): Promise<Response> {
+  const channelId = interaction.channel_id
+  if (!channelId) {
+    return json({ type: 4, data: { content: "This command must be used in a channel." } })
+  }
+
+  const stateStore = new ChannelStateStore()
+  const state = stateStore.get(channelId)
+
+  const parts = text.replace(/^auth-connect\s*/i, "").replace(/^auth connect\s*/i, "").trim()
+  const providerId = parts.split(" ")[0]
+
+  if (!providerId) {
+    return json({
+      type: 4,
+      data: {
+        content: "Usage: `/auth-connect <provider>`\nExample: `/auth-connect chatgpt`",
+      },
+    })
+  }
+
+  const sandboxManager = getSandboxManager()
+
+  if (state.pendingOAuth?.providerId === providerId && state.pendingOAuth?.deviceAuthId) {
+    try {
+      const completeResult: OAuthCompleteResult = await sandboxManager.completeOAuth(
+        channelId,
+        providerId,
+        0,
+        state.pendingOAuth.deviceAuthId,
+      )
+
+      if (completeResult.success && completeResult.tokens) {
+        const credentials = new CredentialStore(process.env.BRIDGE_SECRET || "")
+        credentials.setProviderAuth(providerId, completeResult.tokens as Record<string, unknown>)
+
+        state.pendingOAuth = undefined
+        stateStore.set(state)
+
+        return json({
+          type: 4,
+          data: {
+            content: `✅ Successfully connected to **${providerId}**!\n\nYou can now use this provider with \`/use-provider ${providerId}\``,
+          },
+        })
+      }
+
+      return json({
+        type: 4,
+        data: {
+          content: completeResult.message || "OAuth not complete yet. Please try again in a moment.",
+        },
+      })
+    } catch (error) {
+      return json({
+        type: 4,
+        data: {
+          content: `OAuth complete error: ${error instanceof Error ? error.message : "Unknown error"}`,
+        },
+      })
+    }
+  }
+
+  try {
+    const oauthResult: OAuthStartResult = await sandboxManager.startOAuth(channelId, providerId)
+
+    if (oauthResult.success === false || !oauthResult.url) {
+      return json({
+        type: 4,
+        data: {
+          content: oauthResult.message || `Failed to start OAuth for '${providerId}'. Check the provider name.`,
+        },
+      })
+    }
+
+    if (oauthResult.deviceAuthId) {
+      state.pendingOAuth = {
+        providerId,
+        deviceAuthId: oauthResult.deviceAuthId,
+        timestamp: Date.now(),
+      }
+      stateStore.set(state)
+    }
+
+    const message = [
+      `**OAuth for ${providerId}**`,
+      "",
+      oauthResult.instructions || "Please complete authentication:",
+      "",
+      `🔗 **URL**: ${oauthResult.url}`,
+      oauthResult.userCode ? `🔢 **Code**: \`${oauthResult.userCode}\`` : "",
+      "",
+      "Once complete, run `/auth-connect " + providerId + "` again to complete the connection.",
+    ].filter(Boolean).join("\n")
+
+    return json({ type: 4, data: { content: message } })
+  } catch (error) {
+    return json({
+      type: 4,
+      data: {
+        content: `OAuth error: ${error instanceof Error ? error.message : "Unknown error"}`,
+      },
+    })
+  }
+}
+
 async function handleProjectCommand(interaction: Interaction): Promise<Response> {
   const gh = getGitHubClient()
   if (!gh) {
@@ -451,6 +557,10 @@ export default async function handler(request: Request): Promise<Response> {
 
   if (mapped.text === "project" || mapped.text === "project show" || mapped.text === "project select") {
     return handleProjectCommand(interaction)
+  }
+
+  if (mapped.text.startsWith("auth-connect") || mapped.text.startsWith("auth connect")) {
+    return handleAuthConnect(interaction, mapped.text)
   }
 
   const registry = loadProviderRegistryFromEnv()

@@ -10,6 +10,21 @@ export interface SandboxContext {
   opencodePassword: string
 }
 
+export interface OAuthStartResult {
+  success?: boolean
+  message?: string
+  url?: string
+  userCode?: string
+  instructions?: string
+  deviceAuthId?: string
+}
+
+export interface OAuthCompleteResult {
+  success: boolean
+  message?: string
+  tokens?: Record<string, unknown>
+}
+
 export interface SandboxManagerOptions {
   runtime?: "node24" | "node22" | "python3.13"
   vcpus?: number
@@ -190,6 +205,66 @@ export class SandboxManager {
       stdout: await result.stdout(),
       stderr: await result.stderr(),
       exitCode: result.exitCode,
+    }
+  }
+
+  async startOAuth(channelId: string, providerId: string, method?: number): Promise<OAuthStartResult> {
+    const context = await this.getOrCreate(channelId, undefined)
+    const url = `${context.opencodeBaseUrl}/provider/${providerId}/oauth/authorize`
+    const body = method !== undefined ? JSON.stringify({ method }) : "{}"
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Basic ${Buffer.from(`opencode:${context.opencodePassword}`).toString("base64")}`,
+      },
+      body,
+    })
+
+    if (!response.ok) {
+      return { success: false, message: `OAuth start failed: ${response.status}` }
+    }
+
+    const data = (await response.json()) as { data?: { url?: string; user_code?: string; instructions?: string; device_auth_id?: string } }
+    const result = data.data || {}
+
+    return {
+      url: result.url,
+      userCode: result.user_code,
+      instructions: result.instructions,
+      deviceAuthId: result.device_auth_id,
+    }
+  }
+
+  async completeOAuth(
+    channelId: string,
+    providerId: string,
+    method: number,
+    deviceAuthId?: string,
+  ): Promise<OAuthCompleteResult> {
+    const context = await this.getOrCreate(channelId, undefined)
+
+    const url = `${context.opencodeBaseUrl}/provider/${providerId}/oauth/callback`
+    const body = JSON.stringify({ method, device_auth_id: deviceAuthId })
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Basic ${Buffer.from(`opencode:${context.opencodePassword}`).toString("base64")}`,
+      },
+      body,
+    })
+
+    if (!response.ok) {
+      return { success: false, message: `OAuth callback failed: ${response.status}` }
+    }
+
+    const data = (await response.json()) as { data?: Record<string, unknown> }
+    return {
+      success: true,
+      tokens: data.data,
     }
   }
 

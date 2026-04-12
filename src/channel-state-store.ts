@@ -14,6 +14,11 @@ export interface ChannelState {
   repoUrl?: string
   branch?: string
   projectName?: string
+  pendingOAuth?: {
+    providerId: string
+    deviceAuthId: string
+    timestamp: number
+  }
 }
 
 interface ChannelStateConfig {
