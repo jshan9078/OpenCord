@@ -890,11 +890,19 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
   }
 
   // If no thread and no message ID, we'll use channel-level followups
-    const effectiveThreadId = threadId || undefined
-    const conversationId = effectiveThreadId || channelId
-    const conversationState = stateStore.get(conversationId)
+  const effectiveThreadId = threadId || undefined
+  const conversationId = effectiveThreadId || channelId
+  const conversationState = stateStore.get(conversationId)
 
-    const selection = await selectionStore.resolveSelection(userId, effectiveThreadId)
+  // Selection semantics:
+  // - If /ask is invoked inside a thread, honor thread overrides.
+  // - If /ask is invoked in a normal channel, use user defaults.
+  const selectionThreadId = commandIsInThread ? effectiveThreadId : undefined
+
+  const selection = await selectionStore.resolveSelection(userId, selectionThreadId)
+  if (!commandIsInThread && effectiveThreadId) {
+    await selectionStore.initializeThreadFromUser(effectiveThreadId, userId)
+  }
     if (!selection?.providerId) {
     await sendFollowup(
       interaction.application_id,

@@ -87,9 +87,23 @@ export class SelectionStore {
   async resolveSelection(userId: string, threadId?: string): Promise<SelectionConfig | undefined> {
     if (threadId) {
       const threadSelection = await this.getThreadSelection(threadId)
-      if (threadSelection?.providerId) {
+      if (threadSelection?.providerId && threadSelection?.modelId) {
         return threadSelection
       }
+
+      if (threadSelection?.providerId && !threadSelection.modelId) {
+        const defaults = await this.getUserDefaults(userId)
+        if (defaults?.providerId === threadSelection.providerId && defaults.modelId) {
+          const repaired = {
+            providerId: threadSelection.providerId,
+            modelId: defaults.modelId,
+          }
+          await this.setThreadSelection(threadId, repaired)
+          return repaired
+        }
+        return threadSelection
+      }
+
       return this.initializeThreadFromUser(threadId, userId)
     }
 
