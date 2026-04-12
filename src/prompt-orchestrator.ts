@@ -11,6 +11,13 @@ import type { ProviderRegistry } from "./provider-registry.js"
 import type { OpencodeRuntime } from "./opencode-runtime.js"
 import { ChannelStateStore as ChannelStoreClass } from "./channel-state-store.js"
 
+function resolveRuntimeProviderId(providerId: string): string {
+  if (providerId === "chatgpt") {
+    return "openai"
+  }
+  return providerId
+}
+
 export interface RuntimeClientAdapter {
   auth: {
     set(input: { path: { id: string }; body: Record<string, unknown> }): Promise<unknown>
@@ -94,6 +101,7 @@ export async function executePromptForChannel(
 > {
   const state = stateStore.get(channelId)
   const { providerId, modelId } = selection
+  const runtimeProviderId = resolveRuntimeProviderId(providerId)
 
   await runtime.syncRegistry(registry)
 
@@ -101,7 +109,7 @@ export async function executePromptForChannel(
   let authPrimed = false
   if (options.providerAuth) {
     try {
-      await runtime.setProviderAuth(providerId, options.providerAuth)
+      await runtime.setProviderAuth(runtimeProviderId, options.providerAuth)
       authPrimed = true
     } catch {
       // Fall through to normal auth bootstrap path
@@ -109,7 +117,7 @@ export async function executePromptForChannel(
   }
 
   if (!authPrimed) {
-    const authResult = await ensureProviderAuth(client, registry, credentials, providerId)
+    const authResult = await ensureProviderAuth(client, registry, credentials, runtimeProviderId)
     if (authResult.type === "needs_local_oauth") {
       return {
         ok: false,
@@ -151,7 +159,7 @@ export async function executePromptForChannel(
     : prompt
 
   await runtime.promptAsync(sessionId, finalPrompt, {
-    providerId,
+    providerId: runtimeProviderId,
     modelId,
   })
   const relayResult = await relayPromise

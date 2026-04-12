@@ -43,6 +43,13 @@ const DEFAULT_OPTIONS: Required<SandboxManagerOptions> = {
 const OPENCODE_PORT = 4096
 const OPENCODE_CONFIG_BLOB_PATH = "opencode-config/config-bundle.json"
 
+function resolveRuntimeProviderId(providerId: string): string {
+  if (providerId === "chatgpt") {
+    return "openai"
+  }
+  return providerId
+}
+
 export class SandboxManager {
   private readonly options: Required<SandboxManagerOptions>
   private readonly cache = new Map<string, SandboxContext>()
@@ -370,7 +377,8 @@ export class SandboxManager {
 
   async startOAuth(channelId: string, providerId: string, method?: number): Promise<OAuthStartResult> {
     const context = await this.getOrCreate(channelId, undefined)
-    const url = `${context.opencodeBaseUrl}/provider/${providerId}/oauth/authorize`
+    const runtimeProviderId = resolveRuntimeProviderId(providerId)
+    const url = `${context.opencodeBaseUrl}/provider/${runtimeProviderId}/oauth/authorize`
     const body = JSON.stringify({ method: method ?? 0 })
 
     const response = await fetch(url, {
@@ -405,8 +413,9 @@ export class SandboxManager {
     deviceAuthId?: string,
   ): Promise<OAuthCompleteResult> {
     const context = await this.getOrCreate(channelId, undefined)
+    const runtimeProviderId = resolveRuntimeProviderId(providerId)
 
-    const url = `${context.opencodeBaseUrl}/provider/${providerId}/oauth/callback`
+    const url = `${context.opencodeBaseUrl}/provider/${runtimeProviderId}/oauth/callback`
     const body = JSON.stringify({ method, device_auth_id: deviceAuthId })
 
     const response = await fetch(url, {
