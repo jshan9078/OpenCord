@@ -1,8 +1,8 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 
-import { CredentialStore } from "../src/credential-store"
-import { OpencodeRuntime } from "../src/opencode-runtime"
-import { classifyAuthMethod, pickBestOAuthMethod } from "../src/provider-registry"
+import { CredentialStore } from "../src/credential-store.js"
+import { OpencodeRuntime } from "../src/opencode-runtime.js"
+import { classifyAuthMethod, pickBestOAuthMethod } from "../src/provider-registry.js"
 
 function usage(): string {
   return [

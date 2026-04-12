@@ -57,7 +57,7 @@ pnpm install
 
 **User config** (optional):
 - `OPENCODE_GIST_URL` = URL of a private GitHub gist with your `opencode.jsonc`
-- To create: run `bun scripts/bundle-config.ts` (will prompt for GitHub token or use `GITHUB_TOKEN` env var)
+- To create: run `node scripts/bundle-config.ts` (will prompt for GitHub token or use `GITHUB_TOKEN` env var)
 
 Now pull env vars locally and deploy:
 
@@ -73,7 +73,8 @@ vercel deploy --prod
 ### 4. Register Slash Commands
 
 ```bash
-DISCORD_APPLICATION_ID=xxx pnpm exec bun scripts/register-commands.ts
+pnpm tsx scripts/register-commands.ts
+# (uses .env.local values - run `vercel env pull` first to get them)
 ```
 
 ### 5. Set Provider Credentials

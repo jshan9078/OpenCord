@@ -130,10 +130,10 @@ Commands are registered via `scripts/register-commands.ts`:
 
 ```typescript
 // Guild scope (fast updates during dev)
-DISCORD_GUILD_ID=... pnpm exec bun scripts/register-commands.ts
+DISCORD_GUILD_ID=... node scripts/register-commands.ts
 
 // Global scope (slow, for production)
-pnpm exec bun scripts/register-commands.ts
+node scripts/register-commands.ts
 ```
 
 Set the Interactions URL in Discord Developer Portal:

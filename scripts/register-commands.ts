@@ -1,12 +1,14 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
+
+import dotenv from "dotenv"
+dotenv.config({ path: ".env.local" })
 
 import { buildApplicationCommands } from "../src/discord-application-commands"
 
 function usage(): string {
   return [
     "Usage:",
-    "  DISCORD_APPLICATION_ID=... DISCORD_BOT_TOKEN=... bun scripts/register-commands.ts",
-    "  DISCORD_APPLICATION_ID=... DISCORD_BOT_TOKEN=... DISCORD_GUILD_ID=... bun scripts/register-commands.ts",
+    "  pnpm tsx scripts/register-commands.ts",
   ].join("\n")
 }
 

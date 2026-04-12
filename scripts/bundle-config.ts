@@ -1,12 +1,12 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 
 /**
  * Bundle user OpenCode config into a GitHub gist.
  * 
  * Usage:
- *   pnpm exec bun scripts/bundle-config.ts
+ *   node scripts/bundle-config.ts
  *   # or with GitHub token:
- *   GITHUB_TOKEN=ghp_xxx pnpm exec bun scripts/bundle-config.ts
+ *   GITHUB_TOKEN=ghp_xxx node scripts/bundle-config.ts
  */
 
 import { readdir, readFile, stat } from "fs/promises"
