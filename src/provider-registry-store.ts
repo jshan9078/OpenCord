@@ -143,7 +143,7 @@ export async function refreshProviderRegistry(): Promise<{
 
   const blob = await put(REGISTRY_BLOB_PATH, payload, {
     access: "private",
-    addRandomSuffix: false,
+    allowOverwrite: true,
     contentType: "application/json",
   })
 

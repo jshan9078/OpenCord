@@ -37,7 +37,7 @@ async function writeJson(path: string, value: SelectionConfig): Promise<void> {
   requireBlobToken()
   await put(path, JSON.stringify(value), {
     access: "private",
-    addRandomSuffix: false,
+    allowOverwrite: true,
     contentType: "application/json",
   })
 }
