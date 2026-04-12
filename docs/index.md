@@ -91,6 +91,7 @@ See [Source Files](./components/source-files.md) for complete reference.
 |----------|----------|-------------|
 | `DISCORD_APPLICATION_ID` | Yes | Discord app ID |
 | `DISCORD_PUBLIC_KEY` | Yes | Signature verification key |
+| `DISCORD_BOT_TOKEN` | Yes | Discord bot token (for thread creation) |
 | `GITHUB_TOKEN` | Yes | For repo/branch selection |
 | `OPENCODE_GIST_URL` | No | GitHub gist URL with your `opencode.jsonc` (create via `scripts/bundle-config.ts`) |
 

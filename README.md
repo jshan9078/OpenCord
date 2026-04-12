@@ -54,6 +54,7 @@ In Vercel dashboard, set:
 |----------|-------------|
 | `DISCORD_APPLICATION_ID` | Your Discord app ID |
 | `DISCORD_PUBLIC_KEY` | Your Discord public key (hex) |
+| `DISCORD_BOT_TOKEN` | Your Discord bot token (needed for thread creation) |
 | `GITHUB_TOKEN` | GitHub personal access token |
 
 **Provider API keys** (optional):

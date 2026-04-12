@@ -51,11 +51,16 @@ async function sendFollowup(
   token: string,
   content: string,
   components?: unknown[],
+  threadId?: string,
 ): Promise<void> {
+  const body: Record<string, unknown> = { content, components }
+  if (threadId) {
+    body.thread_id = threadId
+  }
   await fetch(`https://discord.com/api/v10/webhooks/${applicationId}/${token}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content, components }),
+    body: JSON.stringify(body),
   })
 }
 
@@ -385,6 +390,7 @@ async function handleProjectCommand(interaction: Interaction): Promise<Response>
 
 async function processAskInteraction(interaction: Interaction, prompt: string): Promise<void> {
   const channelId = interaction.channel_id
+  const messageId = interaction.message?.id
 
   if (!channelId) {
     await sendFollowup(
@@ -397,6 +403,38 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
 
   const stateStore = new ChannelStateStore()
   const state = stateStore.get(channelId)
+
+  // Create or reuse thread for this conversation
+  let threadId = state.threadId
+
+  if (!threadId && messageId) {
+    // Create a new thread from the command message
+    const threadName = `OpenCode: ${prompt.slice(0, 50)}${prompt.length > 50 ? "..." : ""}`
+    const threadResponse = await fetch(
+      `https://discord.com/api/v10/channels/${channelId}/messages/${messageId}/threads`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
+        },
+        body: JSON.stringify({
+          name: threadName,
+          auto_archive_duration: 1440, // 24 hours
+        }),
+      },
+    ).catch(() => null)
+
+    if (threadResponse?.ok) {
+      const thread = (await threadResponse.json()) as { id: string }
+      threadId = thread.id
+      state.threadId = threadId
+      stateStore.set(state)
+    }
+  }
+
+  // If no thread and no message ID, we'll use channel-level followups
+  const effectiveThreadId = threadId || undefined
 
   let repoUrl: string | undefined
   let branch = "main"
@@ -430,6 +468,7 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
 
   let responseBuffer = ""
   let toolEvents = 0
+  const threadIdForFollowups = effectiveThreadId
 
   const result = await executePromptForChannel(
     runtime,
@@ -443,7 +482,7 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
         responseBuffer += text
       },
       onToolActivity: async (toolMessage: string) => {
-        await sendFollowup(interaction.application_id, interaction.token, `> ${toolMessage}`)
+        await sendFollowup(interaction.application_id, interaction.token, `> ${toolMessage}`, undefined, threadIdForFollowups)
       },
       onToolRequest: async (payload) => {
         toolEvents += 1
@@ -454,6 +493,7 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
           interaction.token,
           `> ⏳ Tool: ${payload.toolName}`,
           buildToolButtons(payload.toolName, requestData, resultData),
+          threadIdForFollowups,
         )
       },
       onToolResult: async (payload) => {
@@ -464,22 +504,23 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
           interaction.token,
           `> ✅ Tool: ${payload.toolName}`,
           buildToolButtons(payload.toolName, requestData, resultData),
+          threadIdForFollowups,
         )
       },
       onQuestion: async (questionMessage: string) => {
-        await sendFollowup(interaction.application_id, interaction.token, `> ${questionMessage}`)
+        await sendFollowup(interaction.application_id, interaction.token, `> ${questionMessage}`, undefined, threadIdForFollowups)
       },
       onPermission: async (permissionMessage: string) => {
-        await sendFollowup(interaction.application_id, interaction.token, `> ${permissionMessage}`)
+        await sendFollowup(interaction.application_id, interaction.token, `> ${permissionMessage}`, undefined, threadIdForFollowups)
       },
       onError: async (errorMessage: string) => {
-        await sendFollowup(interaction.application_id, interaction.token, `> Error: ${errorMessage}`)
+        await sendFollowup(interaction.application_id, interaction.token, `> Error: ${errorMessage}`, undefined, threadIdForFollowups)
       },
     },
   )
 
   if (!result.ok) {
-    await sendFollowup(interaction.application_id, interaction.token, result.message)
+    await sendFollowup(interaction.application_id, interaction.token, result.message, undefined, threadIdForFollowups)
     return
   }
 
@@ -488,16 +529,16 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
     const helpMsg = "\n\nTo switch models, use `/use-provider` and `/use-model`"
     if (text) {
       const clipped = text.length > 1750 ? `${text.slice(0, 1749)}...${helpMsg}` : text + helpMsg
-      await sendFollowup(interaction.application_id, interaction.token, clipped)
+      await sendFollowup(interaction.application_id, interaction.token, clipped, undefined, threadIdForFollowups)
     } else {
-      await sendFollowup(interaction.application_id, interaction.token, `Error occurred.${helpMsg}`)
+      await sendFollowup(interaction.application_id, interaction.token, `Error occurred.${helpMsg}`, undefined, threadIdForFollowups)
     }
   } else if (text) {
     const clipped = text.length > 1800 ? `${text.slice(0, 1799)}...` : text
-    await sendFollowup(interaction.application_id, interaction.token, clipped)
+    await sendFollowup(interaction.application_id, interaction.token, clipped, undefined, threadIdForFollowups)
   } else {
     const suffix = toolEvents > 0 ? ` (${toolEvents} tool${toolEvents > 1 ? "s" : ""})` : ""
-    await sendFollowup(interaction.application_id, interaction.token, `Done${suffix}.`)
+    await sendFollowup(interaction.application_id, interaction.token, `Done${suffix}.`, undefined, threadIdForFollowups)
   }
 }
 
