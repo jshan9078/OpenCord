@@ -33,6 +33,34 @@ function json(data: unknown, status = 200): Response {
   })
 }
 
+async function readNodeRequestBody(req: {
+  on(event: "data", listener: (chunk: Buffer | string) => void): void
+  on(event: "end", listener: () => void): void
+  on(event: "error", listener: (error: Error) => void): void
+}): Promise<Buffer> {
+  const chunks: Buffer[] = []
+  return await new Promise((resolve, reject) => {
+    req.on("data", (chunk) => {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+    })
+    req.on("end", () => resolve(Buffer.concat(chunks)))
+    req.on("error", reject)
+  })
+}
+
+async function sendNodeResponse(
+  res: {
+    statusCode: number
+    setHeader(name: string, value: string): void
+    end(body?: string): void
+  },
+  response: Response,
+): Promise<void> {
+  res.statusCode = response.status
+  response.headers.forEach((value, key) => res.setHeader(key, value))
+  res.end(await response.text())
+}
+
 function verifyDiscordRequest(
   body: string,
   signature: string,
@@ -571,7 +599,7 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
   }
 }
 
-export default async function handler(request: Request): Promise<Response> {
+async function handleWebRequest(request: Request): Promise<Response> {
   try {
     if (request.method !== "POST") {
       return json({ error: "Method not allowed" }, 405)
@@ -648,4 +676,46 @@ export default async function handler(request: Request): Promise<Response> {
       },
     })
   }
+}
+
+export default async function handler(
+  req: {
+    method?: string
+    url?: string
+    headers: Record<string, string | string[] | undefined>
+    on(event: "data", listener: (chunk: Buffer | string) => void): void
+    on(event: "end", listener: () => void): void
+    on(event: "error", listener: (error: Error) => void): void
+  },
+  res: {
+    statusCode: number
+    setHeader(name: string, value: string): void
+    end(body?: string): void
+  },
+): Promise<void> {
+  const body = await readNodeRequestBody(req)
+  const headers = new Headers()
+
+  for (const [key, value] of Object.entries(req.headers || {})) {
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        headers.append(key, item)
+      }
+      continue
+    }
+    if (value !== undefined) {
+      headers.set(key, value)
+    }
+  }
+
+  const host = headers.get("host") || "localhost"
+  const bodyInput = body.length > 0 ? new Uint8Array(body) : undefined
+  const request = new Request(`https://${host}${req.url || "/api/discord/interactions"}`, {
+    method: req.method || "GET",
+    headers,
+    body: bodyInput,
+  })
+
+  const response = await handleWebRequest(request)
+  await sendNodeResponse(res, response)
 }

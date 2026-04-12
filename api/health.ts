@@ -1,5 +1,14 @@
-export default async function handler(): Promise<Response> {
-  return new Response(
+export default function handler(
+  _req: unknown,
+  res: {
+    statusCode: number
+    setHeader(name: string, value: string): void
+    end(body?: string): void
+  },
+): void {
+  res.statusCode = 200
+  res.setHeader("Content-Type", "application/json")
+  res.end(
     JSON.stringify({
       ok: true,
       time: new Date().toISOString(),
@@ -9,9 +18,5 @@ export default async function handler(): Promise<Response> {
         githubToken: Boolean(process.env.GITHUB_TOKEN),
       },
     }),
-    {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    },
   )
 }
