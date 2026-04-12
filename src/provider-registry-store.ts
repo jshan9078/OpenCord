@@ -2,7 +2,7 @@
  * Loads and refreshes the durable provider registry snapshot.
  * The snapshot is stored in Vercel Blob so slash commands do not depend on models.dev on every request.
  */
-import { head, put } from "@vercel/blob"
+import { get, put } from "@vercel/blob"
 import { classifyAuthMethod, ProviderRegistry, type ProviderRecord } from "./provider-registry.js"
 import { loadProviderRegistryFromEnv } from "./provider-registry-env.js"
 
@@ -87,21 +87,16 @@ async function fetchModelsDevRegistryDocument(): Promise<RegistryDocument> {
 }
 
 async function fetchStoredRegistryDocument(): Promise<{ document: RegistryDocument; url: string } | undefined> {
-  let blob
-  try {
-    blob = await head(REGISTRY_BLOB_PATH)
-  } catch {
+  const result = await get(REGISTRY_BLOB_PATH, { access: "private" }).catch(() => null)
+  if (!result || result.statusCode !== 200 || !result.stream) {
     return undefined
   }
 
-  const response = await fetch(blob.url)
-  if (!response.ok) {
-    throw new Error(`Failed to fetch provider registry blob: ${response.status}`)
-  }
+  const text = await new Response(result.stream).text()
 
   return {
-    document: (await response.json()) as RegistryDocument,
-    url: blob.url,
+    document: JSON.parse(text) as RegistryDocument,
+    url: result.blob.url,
   }
 }
 
@@ -147,7 +142,7 @@ export async function refreshProviderRegistry(): Promise<{
   const existing = await fetchStoredRegistryDocument().catch(() => undefined)
 
   const blob = await put(REGISTRY_BLOB_PATH, payload, {
-    access: "public",
+    access: "private",
     addRandomSuffix: false,
     contentType: "application/json",
   })
