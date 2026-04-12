@@ -63,7 +63,18 @@ export class SandboxManager {
   ): Promise<SandboxContext> {
     const cached = this.cache.get(channelId)
     if (cached) {
-      return cached
+      const healthy = await fetch(`${cached.opencodeBaseUrl}/global/health`, {
+        method: "GET",
+        signal: AbortSignal.timeout(3000),
+      })
+        .then((response) => response.ok)
+        .catch(() => false)
+
+      if (healthy) {
+        return cached
+      }
+
+      this.cache.delete(channelId)
     }
 
     let sandbox: Sandbox
@@ -118,21 +129,6 @@ export class SandboxManager {
     const port = OPENCODE_PORT
     const opencodeBaseUrl = this.getOpenCodeBaseUrl(sandbox)
 
-    // Check if OpenCode is already running
-    const checkResult = await sandbox.runCommand({
-      cmd: "curl",
-      args: ["-s", "-o", "/dev/null", "-w", "%{http_code}", `http://localhost:${port}/global/health`],
-    }).catch(() => ({ exitCode: 1 }))
-
-    if (checkResult.exitCode === 0) {
-      console.log(`[SandboxManager] OpenCode server already running`)
-      return {
-        sandboxId: sandbox.sandboxId,
-        opencodeBaseUrl,
-        opencodePassword: password,
-      }
-    }
-
     // Install OpenCode if needed
     await this.ensureOpenCodeInstalled(sandbox)
     const opencodePath = await this.resolveOpenCodePath(sandbox)
@@ -142,6 +138,12 @@ export class SandboxManager {
 
     // Inject credentials from env vars into sandbox env
     const envPrefix = this.buildCredentialsEnv()
+
+    // Ensure previous OpenCode server process does not hold the port
+    await sandbox.runCommand({
+      cmd: "bash",
+      args: ["-lc", "pkill -f 'opencode serve' >/dev/null 2>&1 || true"],
+    })
 
     // Start OpenCode server with injected credentials
     console.log(`[SandboxManager] Starting OpenCode server`)
