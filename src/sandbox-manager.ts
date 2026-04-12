@@ -533,12 +533,15 @@ export class SandboxManager {
       return 0
     }
 
-    const oauthIndex = methods.findIndex((method) => {
-      const label = (method.label || "").toLowerCase()
-      return label.includes("oauth") || label.includes("device") || label.includes("headless") || label.includes("browser")
-    })
+    const priorities = ["headless", "device", "code", "browser", "oauth"]
+    for (const token of priorities) {
+      const index = methods.findIndex((method) => (method.label || "").toLowerCase().includes(token))
+      if (index >= 0) {
+        return index
+      }
+    }
 
-    return oauthIndex >= 0 ? oauthIndex : undefined
+    return undefined
   }
 
   async stop(channelId: string): Promise<void> {
