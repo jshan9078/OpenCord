@@ -106,6 +106,7 @@ export class OpencodeRuntime {
   }
 
   async setProviderAuth(providerId: string, payload: Record<string, unknown>): Promise<void> {
+    // Format: { type: "api", key: "..." } or { type: "oauth", refresh: "...", access: "...", expires: ... }
     await this.request(`/auth/${providerId}`, {
       method: "PUT",
       body: payload,
