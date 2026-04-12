@@ -19,7 +19,7 @@ Format: `{PROVIDER}_API_KEY` (uppercase, underscores)
 ### 2. GitHub Token
 
 ```
-GITHUB_TOKEN=ghp_...  (needs repo, read:user, gist scopes)
+GITHUB_TOKEN=ghp_...  (needs repo, read:user scopes)
 ```
 
 ## Auth Methods
@@ -66,9 +66,8 @@ If refresh fails (token revoked), run `/auth-connect <provider>` again to re-aut
 GitHub is needed for:
 - Repo/branch listing (`/project select`)
 - Pushing commits from sandbox
-- Storing the provider registry snapshot for `/providers`, `/models`, and `/ask`
 
-Required PAT scopes: `repo`, `read:user`, `gist`
+Required PAT scopes: `repo`, `read:user`
 
 ## Environment Variables
 
@@ -76,8 +75,8 @@ Required PAT scopes: `repo`, `read:user`, `gist`
 |----------|---------|
 | `GITHUB_TOKEN` | GitHub API token |
 | `BLOB_READ_WRITE_TOKEN` | Vercel Blob token for provider registry storage |
+| `OPENCODE_CONFIG_BLOB_PATH` | Optional: Blob path for bundled `~/.config/opencode` |
 | `{PROVIDER}_API_KEY` | Provider API keys (e.g., OPENAI_API_KEY) |
-| `OPENCODE_GIST_URL` | Optional: URL to gist with your opencode.jsonc |
 
 ## Related Files
 

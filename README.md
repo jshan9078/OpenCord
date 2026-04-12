@@ -62,7 +62,7 @@ These values live in Vercel and are used by the deployed app:
 | `DISCORD_APPLICATION_ID` | Your Discord app ID |
 | `DISCORD_PUBLIC_KEY` | Your Discord public key (hex) |
 | `DISCORD_BOT_TOKEN` | Your Discord bot token (needed for thread creation) |
-| `GITHUB_TOKEN` | GitHub personal access token (needs `repo`, `read:user`, `gist` scopes) |
+| `GITHUB_TOKEN` | GitHub personal access token (needs `repo`, `read:user` scopes) |
 | `BLOB_READ_WRITE_TOKEN` | Vercel Blob token for provider registry storage |
 | `SESSION_BASE_DIR` | Optional session/config storage path. Recommended for serverless: `/tmp/opencode-chat-bridge` |
 
@@ -71,9 +71,15 @@ These values live in Vercel and are used by the deployed app:
 - `ANTHROPIC_API_KEY`
 - etc.
 
-**User config** (optional - your personal OpenCode settings like aliases, templates):
-- `OPENCODE_GIST_URL` = URL of a private GitHub gist with your `opencode.jsonc`
-- To create: run `pnpm tsx scripts/bundle-config.ts` (bundles your local OpenCode config into a gist)
+**User config** (optional - your personal OpenCode settings like skills, agents, templates):
+- `OPENCODE_CONFIG_BLOB_PATH` (optional) Blob path for bundled OpenCode config (default: `opencode-config/config-bundle.json`)
+- Sync your full local config directory to Blob:
+
+```bash
+pnpm tsx scripts/sync-config-to-blob.ts
+```
+
+This script uploads `~/.config/opencode` (excluding `node_modules` and `.git`) to private Vercel Blob.
 
 `BLOB_READ_WRITE_TOKEN` is used to store the durable provider registry snapshot that powers `/providers`, `/models`, and `/ask`.
 

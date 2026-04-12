@@ -3,6 +3,7 @@
  * Handles creation, resumption, and OpenCode server lifecycle.
  */
 import { Sandbox } from "@vercel/sandbox"
+import { get } from "@vercel/blob"
 
 export interface SandboxContext {
   sandboxId: string
@@ -40,6 +41,7 @@ const DEFAULT_OPTIONS: Required<SandboxManagerOptions> = {
 }
 
 const OPENCODE_PORT = 4096
+const OPENCODE_CONFIG_BLOB_PATH = "opencode-config/config-bundle.json"
 
 export class SandboxManager {
   private readonly options: Required<SandboxManagerOptions>
@@ -135,7 +137,7 @@ export class SandboxManager {
     await this.ensureOpenCodeInstalled(sandbox)
     const opencodePath = await this.resolveOpenCodePath(sandbox)
 
-    // Fetch and inject user config from gist if configured
+    // Fetch and inject user config (Blob preferred, gist fallback)
     await this.injectUserConfig(sandbox)
 
     // Inject credentials from env vars into sandbox env
@@ -237,79 +239,69 @@ export class SandboxManager {
   }
 
   private async injectUserConfig(sandbox: Sandbox): Promise<void> {
-    const gistUrl = process.env.OPENCODE_GIST_URL
-    if (!gistUrl) {
-      return
+    const injectedFromBlob = await this.injectUserConfigFromBlob(sandbox)
+    if (!injectedFromBlob) {
+      console.log("[SandboxManager] No OpenCode config bundle found in Blob; continuing with defaults")
+    }
+  }
+
+  private async injectUserConfigFromBlob(sandbox: Sandbox): Promise<boolean> {
+    if (!process.env.BLOB_READ_WRITE_TOKEN) {
+      return false
     }
 
-    console.log(`[SandboxManager] Fetching user config from gist`)
+    const path = process.env.OPENCODE_CONFIG_BLOB_PATH || OPENCODE_CONFIG_BLOB_PATH
 
     try {
-      // Fetch gist content
-      // Extract gist ID from URL
-      const gistIdMatch = gistUrl.match(/gist\.github\.com\/[^/]+\/([a-f0-9]+)/i)
-      if (!gistIdMatch) {
-        console.log(`[SandboxManager] Invalid gist URL format`)
-        return
+      const result = await get(path, { access: "private" }).catch(() => null)
+      if (!result || result.statusCode !== 200 || !result.stream) {
+        return false
       }
 
-      const gistId = gistIdMatch[1]
-      const apiUrl = `https://api.github.com/gists/${gistId}`
-
-      const response = await fetch(apiUrl, {
-        headers: {
-          Accept: "application/vnd.github.v3+json",
-        },
-      })
-
-      if (!response.ok) {
-        console.log(`[SandboxManager] Failed to fetch gist: ${response.status}`)
-        return
+      const text = await new Response(result.stream).text()
+      const payload = JSON.parse(text) as {
+        files?: Record<string, string>
       }
 
-      const gist = (await response.json()) as {
-        files: Record<string, { content: string; filename: string }>
-      }
-
-      // Determine target directory in sandbox
-      const targetDir = "/vercel/sandbox/.opencode"
-
-      // Write files to sandbox
+      const filesMap = payload.files || {}
+      const targetDir = "/home/vercel-sandbox/.config/opencode"
       const files: Array<{ path: string; content: Buffer }> = []
 
-      for (const [filename, file] of Object.entries(gist.files)) {
-        const content = this.sanitizeOpenCodeConfig(filename, file.content || "")
-        const targetPath = filename.endsWith(".jsonc") || filename.endsWith(".json")
-          ? `${targetDir}/${filename}`
-          : `${targetDir}/${filename}`
-
+      for (const [relativePath, rawContent] of Object.entries(filesMap)) {
+        const content = this.sanitizeOpenCodeConfig(relativePath, rawContent || "")
         files.push({
-          path: targetPath,
+          path: `${targetDir}/${relativePath}`,
           content: Buffer.from(content),
         })
       }
 
       if (files.length > 0) {
         await sandbox.writeFiles(files)
-        console.log(`[SandboxManager] Wrote ${files.length} config files to sandbox`)
+        console.log(`[SandboxManager] Wrote ${files.length} config files from Blob`)
       }
+
+      return files.length > 0
     } catch (error) {
-      console.log(`[SandboxManager] Failed to inject user config:`, error)
+      console.log("[SandboxManager] Failed to inject user config from Blob:", error)
+      return false
     }
   }
 
   private sanitizeOpenCodeConfig(filename: string, content: string): string {
-    if (filename !== "opencode.jsonc" && filename !== "opencode.json") {
+    if (!filename.endsWith("opencode.jsonc") && !filename.endsWith("opencode.json")) {
       return content
     }
 
-    return content
-      .replace(/^\s*"projectId"\s*:\s*.*?,?\s*$/gm, "")
-      .replace(/^\s*"orgId"\s*:\s*.*?,?\s*$/gm, "")
-      .replace(/^\s*"projectName"\s*:\s*.*?,?\s*$/gm, "")
-      .replace(/^\s*'projectId'\s*:\s*.*?,?\s*$/gm, "")
-      .replace(/^\s*'orgId'\s*:\s*.*?,?\s*$/gm, "")
-      .replace(/^\s*'projectName'\s*:\s*.*?,?\s*$/gm, "")
+    const sanitized = content
+      .replace(/^\s*["']?projectId["']?\s*:\s*.*?,?\s*$/gm, "")
+      .replace(/^\s*["']?orgId["']?\s*:\s*.*?,?\s*$/gm, "")
+      .replace(/^\s*["']?projectName["']?\s*:\s*.*?,?\s*$/gm, "")
+
+    if (sanitized !== content) {
+      console.log(`[SandboxManager] Removed unsupported OpenCode config keys from ${filename}`)
+    }
+
+    return sanitized
   }
 
   private async waitForOpenCode(sandbox: Sandbox, port: number, maxAttempts = 30): Promise<void> {
