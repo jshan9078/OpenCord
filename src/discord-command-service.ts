@@ -18,6 +18,34 @@ export interface CommandResult {
   message?: string
 }
 
+const DISCORD_MESSAGE_LIMIT = 1800
+
+function joinWithinLimit(header: string, lines: string[], emptyMessage: string): string {
+  if (lines.length === 0) {
+    return emptyMessage
+  }
+
+  const output = [header]
+  let used = header.length
+  let included = 0
+
+  for (const line of lines) {
+    const addition = `\n${line}`
+    if (used + addition.length > DISCORD_MESSAGE_LIMIT) {
+      break
+    }
+    output.push(line)
+    used += addition.length
+    included += 1
+  }
+
+  if (included < lines.length) {
+    output.push(`...and ${lines.length - included} more`)
+  }
+
+  return output.join("\n")
+}
+
 function formatHealthCheck(registry: ProviderRegistry, credentials: CredentialStore): string {
   const checks = [
     `time=${new Date().toISOString()}`,
@@ -45,7 +73,7 @@ function formatProviders(
     return "No providers available yet."
   }
 
-  return ["Available providers:", ...lines].join("\n")
+  return joinWithinLimit("Available providers:", lines, "No providers available yet.")
 }
 
 function formatModels(registry: ProviderRegistry, providerId: string): string {
@@ -54,10 +82,11 @@ function formatModels(registry: ProviderRegistry, providerId: string): string {
     return `No models found for provider '${providerId}'.`
   }
 
-  return [
+  return joinWithinLimit(
     `Models for ${providerId}:`,
-    ...models.map((model) => `- ${model.id}${model.label ? ` (${model.label})` : ""}`),
-  ].join("\n")
+    models.map((model) => `- ${model.id}${model.label ? ` (${model.label})` : ""}`),
+    `No models found for provider '${providerId}'.`,
+  )
 }
 
 function extractRepoName(url: string): string {
@@ -132,7 +161,7 @@ export function handleDiscordCommand(
       return {
         handled: true,
         isPrompt: false,
-        message: "No active provider. Run: use provider <provider>",
+        message: "No active provider. Run: /models <provider> or /use-provider <provider>",
       }
     }
     return {
