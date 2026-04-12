@@ -878,11 +878,22 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
   const conversationState = stateStore.get(conversationId)
 
   const selection = await selectionStore.resolveSelection(userId, effectiveThreadId)
-  if (!selection?.providerId || !selection?.modelId) {
+  if (!selection?.providerId) {
     await sendFollowup(
       interaction.application_id,
       interaction.token,
-      "No default provider/model configured. Run `/use-provider <provider>` and `/use-model <model>` in any normal channel first.",
+      "No default provider configured. Run `/use-provider <provider>` in any normal channel first.",
+      undefined,
+      effectiveThreadId,
+    )
+    return
+  }
+
+  if (!selection?.modelId) {
+    await sendFollowup(
+      interaction.application_id,
+      interaction.token,
+      `No model configured for provider '${selection.providerId}'. Run /use-model <model> in any normal channel first.`,
       undefined,
       effectiveThreadId,
     )
@@ -1180,11 +1191,11 @@ export default async function handler(
       }
 
       const userDefaults = await selectionStore.getUserDefaults(userId)
-      if (inThread && (!userDefaults?.providerId || !userDefaults?.modelId)) {
+      if (inThread && !userDefaults?.providerId) {
         await sendChunkedInteractionResponse(
           interaction,
           res,
-          "No default provider/model configured. Run `/use-provider <provider>` and `/use-model <model>` in any normal channel first.",
+          "No default provider configured. Run `/use-provider <provider>` in a normal channel first.",
         )
         return
       }
@@ -1216,11 +1227,11 @@ export default async function handler(
       }
 
       const userDefaults = await selectionStore.getUserDefaults(userId)
-      if (inThread && (!userDefaults?.providerId || !userDefaults?.modelId)) {
+      if (inThread && !userDefaults?.providerId) {
         await sendChunkedInteractionResponse(
           interaction,
           res,
-          "No default provider/model configured. Run `/use-provider <provider>` and `/use-model <model>` in any normal channel first.",
+          "No default provider configured. Run `/use-provider <provider>` in a normal channel first.",
         )
         return
       }
