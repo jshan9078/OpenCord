@@ -12,11 +12,12 @@ const CONFIG_DIR = join(homedir(), ".config", "opencode");
 const DEFAULT_BLOB_PATH = "opencode-config/config-bundle.json";
 function buildGithubPolicyBlock(defaultLogin?: string): string {
   const lines = [
-    "## CRITICAL: GitHub CLI Policy",
+    "## CRITICAL - MUST READ BEFORE DOING ANYTHING: GitHub CLI Policy",
     "",
     "- You are running in a sandboxed environment.",
     "- You are running in a Vercel sandbox; do not assume user repositories already exist in the local filesystem.",
     "- Treat GitHub as the source of truth for user projects.",
+    "- DO NOT STAGE, CREATE COMMITS, OR UPDATE CODE ON THE REMOTE WITHOUT GETTING EXPLICIT PERMISSION FROM THE USER",
   ];
 
   if (defaultLogin) {
