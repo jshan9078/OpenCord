@@ -509,6 +509,21 @@ function stripPromptEcho(text: string, prompt: string): string {
   return remainder.replace(/^[\s:,-]+/, "")
 }
 
+function stripInternalReasoningLeak(text: string): string {
+  const patterns = [
+    /^the user is asking[\s\S]{0,500}?let me provide this information\.?\s*/i,
+    /^the user asked[\s\S]{0,500}?let me provide this information\.?\s*/i,
+    /^i can see from the environment information that[\s\S]{0,500}?let me provide this information\.?\s*/i,
+  ]
+
+  let cleaned = text
+  for (const pattern of patterns) {
+    cleaned = cleaned.replace(pattern, "")
+  }
+
+  return cleaned.trimStart()
+}
+
 function providerEnvCandidates(providerId: string): string[] {
   const normalized = providerId.toUpperCase().replace(/[^A-Z0-9]/g, "_")
   const candidates = [`${normalized}_API_KEY`]
@@ -531,27 +546,21 @@ async function sendFinalAskResponse(
   text: string,
   usageFooter?: string,
 ): Promise<void> {
+  const embed: Record<string, unknown> = {
+    description: clipEmbedDescription(text || "Done."),
+  }
   if (usageFooter) {
-    await sendFollowup(
-      interaction.application_id,
-      interaction.token,
-      "",
-      undefined,
-      threadId,
-      [
-        {
-          description: clipEmbedDescription(text || "Done."),
-          footer: {
-            text: usageFooter,
-          },
-        },
-      ],
-    )
-    return
+    embed.footer = { text: usageFooter }
   }
 
-  const clipped = text.length > 1900 ? `${text.slice(0, 1899)}...` : text
-  await sendFollowup(interaction.application_id, interaction.token, clipped || "Done.", undefined, threadId)
+  await sendFollowup(
+    interaction.application_id,
+    interaction.token,
+    "",
+    undefined,
+    threadId,
+    [embed],
+  )
 }
 
 function encodeToolPayload(kind: string, toolName: string, data: string): string {
@@ -998,8 +1007,10 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
     const channelState = stateStore.get(channelId)
     const commandIsInThread = await isThreadChannel(channelId)
 
-  // Create or reuse thread for this conversation
-    let threadId = commandIsInThread ? channelId : channelState.threadId
+  // Thread behavior:
+  // - If /ask is invoked inside a thread, stay in that thread.
+  // - If /ask is invoked in a normal channel, always create a new thread.
+    let threadId = commandIsInThread ? channelId : undefined
 
     if (!threadId) {
       const threadName = `OpenCode: ${prompt.slice(0, 50)}${prompt.length > 50 ? "..." : ""}`
@@ -1176,8 +1187,29 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
       : undefined
 
     let responseBuffer = ""
+    let reasoningBuffer = ""
     let toolEvents = 0
     const threadIdForFollowups = effectiveThreadId
+
+    const flushReasoning = async (force = false): Promise<void> => {
+      const trimmed = reasoningBuffer.trim()
+      if (!trimmed) {
+        return
+      }
+
+      if (!force && trimmed.length < 220 && !trimmed.includes("\n\n")) {
+        return
+      }
+
+      reasoningBuffer = ""
+      await sendFollowup(
+        interaction.application_id,
+        interaction.token,
+        `> 💭 ${trimmed}`,
+        undefined,
+        threadIdForFollowups,
+      )
+    }
 
     const result = await executePromptForChannel(
       runtime,
@@ -1193,6 +1225,10 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
     {
       onTextDelta: async (text) => {
         responseBuffer += text
+      },
+      onReasoningDelta: async (text) => {
+        reasoningBuffer += text
+        await flushReasoning(false)
       },
       onToolActivity: async (toolMessage: string) => {
         await sendFollowup(interaction.application_id, interaction.token, `> ${toolMessage}`, undefined, threadIdForFollowups)
@@ -1246,7 +1282,9 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
       registry.getModel(selection.providerId, selection.modelId)?.contextWindow,
     )
 
-    const text = stripPromptEcho(responseBuffer.trim(), prompt)
+    await flushReasoning(true)
+
+    const text = stripInternalReasoningLeak(stripPromptEcho(responseBuffer.trim(), prompt))
     if (result.hadError) {
     const helpMsg = "\n\nTo switch models, use `/use-provider` and `/use-model`"
     if (text) {

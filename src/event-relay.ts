@@ -18,6 +18,7 @@ export interface EventStreamClient {
 
 export interface EventRelaySink {
   onTextDelta(text: string): Promise<void>
+  onReasoningDelta?(text: string): Promise<void>
   onToolActivity(message: string): Promise<void>
   onToolRequest?(payload: {
     toolCallId?: string
@@ -258,6 +259,8 @@ export async function relaySessionEvents(
   let sawTextDelta = false
   let emittedFallbackText = false
   const lastTextByPart = new Map<string, string>()
+  const partTypeById = new Map<string, string>()
+  const pendingDeltaByPart = new Map<string, string[]>()
 
   try {
     for await (const event of events.stream) {
@@ -282,10 +285,30 @@ export async function relaySessionEvents(
       }
 
       if (event.type === "message.part.delta") {
-        sawTextDelta = true
-        const delta = asText(firstDefined(event.properties?.delta, event.properties?.text))
-        if (delta) {
+        const partId = asText(event.properties?.partID)
+        const delta = asText(event.properties?.delta)
+        if (!delta) {
+          continue
+        }
+
+        const partType = partId ? partTypeById.get(partId) : undefined
+        if (partType === "reasoning") {
+          if (sink.onReasoningDelta) {
+            await sink.onReasoningDelta(delta)
+          }
+          continue
+        }
+
+        if (partType === "text") {
+          sawTextDelta = true
           await sink.onTextDelta(delta)
+          continue
+        }
+
+        if (partId) {
+          const pending = pendingDeltaByPart.get(partId) || []
+          pending.push(delta)
+          pendingDeltaByPart.set(partId, pending)
         }
         continue
       }
@@ -294,9 +317,27 @@ export async function relaySessionEvents(
         const part = (event.properties?.part && typeof event.properties.part === "object")
           ? event.properties.part as Record<string, unknown>
           : undefined
+        const partId = asText(firstDefined(part?.id, part?.partID, event.properties?.partID))
+        const partType = asText(part?.type)
+
+        if (partId && partType) {
+          partTypeById.set(partId, partType)
+        }
+
+        if (partId) {
+          const pending = pendingDeltaByPart.get(partId)
+          if (pending && pending.length > 0) {
+            if (partType === "text") {
+              sawTextDelta = true
+              await sink.onTextDelta(pending.join(""))
+            } else if (partType === "reasoning" && sink.onReasoningDelta) {
+              await sink.onReasoningDelta(pending.join(""))
+            }
+            pendingDeltaByPart.delete(partId)
+          }
+        }
 
         if (part?.type === "text") {
-          const partId = asText(firstDefined(part.id, part.partID, event.properties?.partID))
           const nextText = asText(part.text)
           if (nextText) {
             if (sawTextDelta) {
