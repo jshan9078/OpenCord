@@ -199,4 +199,61 @@ describe("isTerminalSessionEvent", () => {
     expect(requests).toEqual(["bash"])
     expect(results).toEqual(["bash"])
   })
+
+  it("captures files from session.diff and forwards todo.updated", async () => {
+    async function* stream() {
+      yield {
+        type: "todo.updated",
+        sessionID: "s1",
+        properties: {
+          sessionID: "s1",
+          todos: [
+            { content: "Task A", status: "pending", priority: "high" },
+            { content: "Task B", status: "completed", priority: "medium" },
+          ],
+        },
+      }
+      yield {
+        type: "session.diff",
+        sessionID: "s1",
+        properties: {
+          sessionID: "s1",
+          diff: [
+            { file: "src/a.ts", patch: "", additions: 1, deletions: 0, status: "modified" },
+            { file: "README.md", patch: "", additions: 2, deletions: 1, status: "modified" },
+          ],
+        },
+      }
+      yield {
+        type: "session.idle",
+        sessionID: "s1",
+        properties: {},
+      }
+    }
+
+    const todoBatches: Array<Array<{ content: string; status: string; priority?: string }>> = []
+
+    const result = await relaySessionEvents(
+      {
+        event: {
+          subscribe: () => ({ stream: stream() }),
+        },
+      },
+      {
+        onTextDelta: async () => {},
+        onToolActivity: async () => {},
+        onQuestion: async () => {},
+        onPermission: async () => {},
+        onError: async () => {},
+        onTodoUpdate: async (todos) => {
+          todoBatches.push(todos)
+        },
+      },
+      "s1",
+    )
+
+    expect(todoBatches.length).toBe(1)
+    expect(todoBatches[0]?.map((todo) => todo.content)).toEqual(["Task A", "Task B"])
+    expect(result.filesEdited).toEqual(["src/a.ts", "README.md"])
+  })
 })

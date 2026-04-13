@@ -34,6 +34,8 @@ function buildGithubPolicyBlock(defaultLogin?: string): string {
     "- Do not use generic web fetching for GitHub content unless `gh` cannot access the resource.",
     "- For read-only repository questions (README, files, metadata), use `gh` without cloning when possible.",
     "- If the task requires editing files, running code, tests, or builds, clone the repository into the sandbox first and then work locally.",
+    "- Prefer shallow clones for speed and lower bandwidth: use `git clone --depth 1` unless full history is explicitly required.",
+    "- Note: `--depth 1` fetches only the latest snapshot and omits full commit history.",
     "",
   );
 

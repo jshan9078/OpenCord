@@ -678,6 +678,20 @@ function parseTodoItems(value: unknown): Array<{ content: string; status: string
   return []
 }
 
+function todoStatusIcon(status: string): string {
+  const normalized = status.toLowerCase()
+  if (normalized === "completed") {
+    return "✅"
+  }
+  if (normalized === "in_progress") {
+    return "⏳"
+  }
+  if (normalized === "cancelled") {
+    return "❌"
+  }
+  return "⌛"
+}
+
 function encodeToolPayload(kind: string, toolName: string, data: string): string {
   const maxEncodedLength = 95
   let safeTool = toolName
@@ -1448,8 +1462,11 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
       }
     }
 
-    const updateTodoProgressEmbed = async (raw: unknown): Promise<void> => {
-      const todos = parseTodoItems(raw)
+    const updateTodoProgressEmbed = async (
+      raw: unknown,
+      todosFromEvent?: Array<{ content: string; status: string; priority?: string }>,
+    ): Promise<void> => {
+      const todos = todosFromEvent && todosFromEvent.length > 0 ? todosFromEvent : parseTodoItems(raw)
       if (todos.length === 0) {
         return
       }
@@ -1461,13 +1478,16 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
         }
       }
 
-      const active = todos.filter((todo) => todo.status === "in_progress").slice(0, 3)
+      const listed = todos.slice(0, 12)
+      const todoLines = listed.map((todo) => `${todoStatusIcon(todo.status)} ${todo.content}`)
       const embed = {
         title: "Todo Progress",
         description: [
           `Pending: ${counts.pending} | In Progress: ${counts.in_progress}`,
           `Completed: ${counts.completed} | Cancelled: ${counts.cancelled}`,
-          ...(active.length > 0 ? ["", "Active:", ...active.map((todo) => `- ${todo.content}`)] : []),
+          "",
+          ...todoLines,
+          ...(todos.length > listed.length ? [`...and ${todos.length - listed.length} more`] : []),
         ].join("\n"),
       }
 
@@ -1557,6 +1577,9 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
         if (payload.toolName === "todowrite") {
           await updateTodoProgressEmbed(payload.resultRaw)
         }
+      },
+      onTodoUpdate: async (todos) => {
+        await updateTodoProgressEmbed(undefined, todos)
       },
       onQuestion: async (questionMessage: string) => {
         await sendFollowup(interaction.application_id, interaction.token, `> ${questionMessage}`, undefined, threadIdForFollowups)

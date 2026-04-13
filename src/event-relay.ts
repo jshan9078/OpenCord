@@ -33,6 +33,7 @@ export interface EventRelaySink {
     resultSummary?: string
     resultRaw?: unknown
   }): Promise<void>
+  onTodoUpdate?(todos: Array<{ content: string; status: string; priority?: string }>): Promise<void>
   onQuestion(message: string): Promise<void>
   onPermission(message: string): Promise<void>
   onError(message: string): Promise<void>
@@ -467,6 +468,45 @@ export async function relaySessionEvents(
 
       if (event.type === "question.asked") {
         await sink.onQuestion(asText(event.properties?.message) || "Agent asked a question.")
+        continue
+      }
+
+      if (event.type === "todo.updated") {
+        if (sink.onTodoUpdate) {
+          const todosValue = event.properties?.todos
+          const todos = Array.isArray(todosValue)
+            ? todosValue
+              .filter((todo) => todo && typeof todo === "object")
+              .map((todo) => {
+                const row = todo as Record<string, unknown>
+                return {
+                  content: asText(row.content),
+                  status: asText(row.status),
+                  priority: asText(row.priority) || undefined,
+                }
+              })
+              .filter((todo) => todo.content && todo.status)
+            : []
+          if (todos.length > 0) {
+            await sink.onTodoUpdate(todos)
+          }
+        }
+        continue
+      }
+
+      if (event.type === "session.diff") {
+        const diff = event.properties?.diff
+        if (Array.isArray(diff)) {
+          for (const item of diff) {
+            if (!item || typeof item !== "object") {
+              continue
+            }
+            const file = asText((item as Record<string, unknown>).file)
+            if (file) {
+              filesEdited.add(file)
+            }
+          }
+        }
         continue
       }
 
