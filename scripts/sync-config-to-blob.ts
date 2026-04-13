@@ -32,6 +32,8 @@ function buildGithubPolicyBlock(defaultLogin?: string): string {
     "- When reporting totals or complete lists, request a sufficiently high `--limit` and paginate as needed before finalizing the answer.",
     "- If you are not sure the result set is complete, state that clearly and continue pagination.",
     "- Do not use generic web fetching for GitHub content unless `gh` cannot access the resource.",
+    "- For GitHub repository tasks, do not start with local filesystem discovery tools (glob/list/read) to locate repos in the sandbox.",
+    "- Resolve repository context via `gh` first; if local execution/editing is needed, clone immediately rather than probing for a local repo copy.",
     "- For read-only repository questions (README, files, metadata), use `gh` without cloning when possible.",
     "- If the task requires editing files, running code, tests, or builds, clone the repository into the sandbox first and then work locally.",
     "- Prefer shallow clones for speed and lower bandwidth: use `git clone --depth 1` unless full history is explicitly required.",

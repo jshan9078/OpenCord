@@ -228,6 +228,7 @@ export async function relaySessionEvents(
 ): Promise<EventRelayResult> {
   const maxIdleMs = options.maxIdleMs ?? 45_000
   const maxTotalMs = options.maxTotalMs ?? 10 * 60_000
+  const terminalDrainMs = 1_500
 
   const startedAt = Date.now()
   let lastEventAt = startedAt
@@ -245,9 +246,16 @@ export async function relaySessionEvents(
   }
 
   let timeoutReason: EventRelayResult["reason"] | null = null
+  let sawTerminalEvent = false
+  let endedAfterTerminalDrain = false
 
   const watchdog = setInterval(() => {
     const now = Date.now()
+    if (sawTerminalEvent && now - lastEventAt >= terminalDrainMs) {
+      endedAfterTerminalDrain = true
+      timeoutController.abort()
+      return
+    }
     if (now - startedAt >= maxTotalMs) {
       timeoutReason = "total_timeout"
       timeoutController.abort()
@@ -284,14 +292,8 @@ export async function relaySessionEvents(
       lastEventAt = Date.now()
 
       if (isTerminalSessionEvent(event, hadError)) {
-        return {
-          completed: true,
-          timedOut: false,
-          reason: "session_complete",
-          hadError,
-          filesEdited: [...filesEdited],
-          usage,
-        }
+        sawTerminalEvent = true
+        continue
       }
 
       if (event.type === "message.part.delta") {
@@ -550,6 +552,17 @@ export async function relaySessionEvents(
       completed: false,
       timedOut: true,
       reason: timeoutReason,
+      hadError,
+      filesEdited: [...filesEdited],
+      usage,
+    }
+  }
+
+  if (sawTerminalEvent || endedAfterTerminalDrain) {
+    return {
+      completed: true,
+      timedOut: false,
+      reason: "session_complete",
       hadError,
       filesEdited: [...filesEdited],
       usage,
