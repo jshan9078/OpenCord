@@ -27,8 +27,9 @@ You (Discord)          ←    Streams results back
 1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
 2. Create a new application
 3. Get your **Public Key** and **Application ID**
-4. Go to "OAuth2 > URL Generator", select `bot` scope, add `Send Messages` permission
+4. Go to "OAuth2 > URL Generator", select `bot` scope, add `Send Messages` and `Manage Threads` permissions
 5. Copy the generated URL and invite the bot to your server
+   - **Note**: The bot must have permissions in the server to create and manage threads for the bridge to function correctly.
 
 ### 2. Deploy to Vercel
 
