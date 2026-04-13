@@ -1,5 +1,6 @@
 import nacl from "tweetnacl"
 import { waitUntil } from "@vercel/functions"
+import { sendDiscordRateLimitedRequest } from "../../src/discord-rate-limited-fetch.js"
 
 type SandboxContext = {
   sandboxId: string
@@ -140,7 +141,7 @@ async function sendFollowup(
   }
 
   if (threadId && process.env.DISCORD_BOT_TOKEN) {
-    const threadResponse = await fetch(`https://discord.com/api/v10/channels/${threadId}/messages`, {
+    const threadResponse = await sendDiscordRateLimitedRequest(`https://discord.com/api/v10/channels/${threadId}/messages`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -154,7 +155,7 @@ async function sendFollowup(
     }
 
     // If direct thread post fails, try webhook with explicit thread_id next.
-    const webhookThreadResponse = await fetch(
+    const webhookThreadResponse = await sendDiscordRateLimitedRequest(
       `https://discord.com/api/v10/webhooks/${applicationId}/${token}`,
       {
         method: "POST",
@@ -180,7 +181,7 @@ async function sendFollowup(
     body.thread_id = threadId
   }
 
-  const send = async (payload: Record<string, unknown>): Promise<Response> => fetch(
+  const send = async (payload: Record<string, unknown>): Promise<Response> => sendDiscordRateLimitedRequest(
     `https://discord.com/api/v10/webhooks/${applicationId}/${token}`,
     {
       method: "POST",
@@ -214,7 +215,7 @@ async function editThreadMessage(
     return false
   }
 
-  const response = await fetch(`https://discord.com/api/v10/channels/${threadId}/messages/${messageId}`, {
+  const response = await sendDiscordRateLimitedRequest(`https://discord.com/api/v10/channels/${threadId}/messages/${messageId}`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -460,7 +461,7 @@ async function sendInitialResponse(
   content: string,
   components?: unknown[],
 ): Promise<void> {
-  await fetch(`https://discord.com/api/v10/webhooks/${applicationId}/${token}`, {
+  await sendDiscordRateLimitedRequest(`https://discord.com/api/v10/webhooks/${applicationId}/${token}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -476,7 +477,7 @@ async function updateOriginalResponse(
   token: string,
   content: string,
 ): Promise<void> {
-  await fetch(`https://discord.com/api/v10/webhooks/${applicationId}/${token}/messages/@original`, {
+  await sendDiscordRateLimitedRequest(`https://discord.com/api/v10/webhooks/${applicationId}/${token}/messages/@original`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ content }),
@@ -1174,7 +1175,7 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
       const threadName = `OpenCode: ${prompt.slice(0, 50)}${prompt.length > 50 ? "..." : ""}`
 
       const threadResponse = messageId
-        ? await fetch(
+        ? await sendDiscordRateLimitedRequest(
           `https://discord.com/api/v10/channels/${channelId}/messages/${messageId}/threads`,
           {
             method: "POST",
@@ -1188,7 +1189,7 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
             }),
           },
         ).catch(() => null)
-        : await fetch(
+        : await sendDiscordRateLimitedRequest(
           `https://discord.com/api/v10/channels/${channelId}/threads`,
           {
             method: "POST",
