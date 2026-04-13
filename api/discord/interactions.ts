@@ -966,6 +966,7 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
     { getRecoveryContext },
     { loadProviderRegistry },
     { SelectionStore },
+    { ThreadSandboxStore },
   ] = await Promise.all([
     import("../../src/channel-state-store.js"),
     import("../../src/credential-store.js"),
@@ -976,6 +977,7 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
       import("../../src/discord-message-fetcher.js"),
       import("../../src/provider-registry-store.js"),
       import("../../src/selection-store.js"),
+      import("../../src/thread-sandbox-store.js"),
     ])
 
     const channelId = interaction.channel_id
@@ -1056,10 +1058,20 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
       )
     }
 
-  // If no thread and no message ID, we'll use channel-level followups
   const effectiveThreadId = threadId || undefined
-  const conversationId = effectiveThreadId || channelId
+  if (!effectiveThreadId) {
+    await sendFollowup(
+      interaction.application_id,
+      interaction.token,
+      "Failed to create or resolve a thread for this /ask request.",
+    )
+    return
+  }
+
+  const conversationId = effectiveThreadId
   const conversationState = stateStore.get(conversationId)
+  const threadSandboxStore = new ThreadSandboxStore()
+  const threadSandboxState = await threadSandboxStore.get(conversationId)
 
   // Selection semantics:
   // - If /ask is invoked inside a thread, honor thread overrides.
@@ -1114,15 +1126,15 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
 
     const sandboxManager = getSandboxManager()
     let sandboxContext: SandboxContext
-    const oldSandboxId = conversationState.sandboxId
+    const oldSandboxId = threadSandboxState?.sandboxId
 
     try {
       sandboxContext = await sandboxManager.getOrCreate(
         conversationId,
-        conversationState.sandboxId,
+        threadSandboxState?.sandboxId,
         repoUrl,
         branch,
-        conversationState.opencodePassword,
+        threadSandboxState?.opencodePassword,
       )
     } catch (error) {
       console.error("Failed to get/create sandbox:", error)
@@ -1134,10 +1146,10 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
       return
     }
 
-  // Update state with sandbox ID for future resumption
-    conversationState.sandboxId = sandboxContext.sandboxId
-    conversationState.opencodePassword = sandboxContext.opencodePassword
-    stateStore.set(conversationState)
+    await threadSandboxStore.set(conversationId, {
+      sandboxId: sandboxContext.sandboxId,
+      opencodePassword: sandboxContext.opencodePassword,
+    })
 
     const runtime = new OpencodeRuntime(sandboxContext.opencodeBaseUrl, sandboxContext.opencodePassword)
     const credentials = new CredentialStore()
@@ -1571,11 +1583,29 @@ export default async function handler(
     )
 
     if (commandResult.message === "stop:sandbox") {
+      if (!inThread) {
+        await sendChunkedInteractionResponse(interaction, res, "Run /stop inside a thread. Sandboxes are thread-scoped.")
+        return
+      }
+
       const [{ getSandboxManager }] = await Promise.all([
         import("../../src/sandbox-manager.js"),
       ])
+      const [{ ThreadSandboxStore }] = await Promise.all([
+        import("../../src/thread-sandbox-store.js"),
+      ])
       const sandboxManager = getSandboxManager()
-      await sandboxManager.stop(currentChannelId)
+      const threadSandboxStore = new ThreadSandboxStore()
+      const threadSandboxState = await threadSandboxStore.get(currentChannelId)
+      await sandboxManager.stop(currentChannelId, threadSandboxState?.sandboxId)
+      await threadSandboxStore.clear(currentChannelId)
+
+      const state = stateStore.get(currentChannelId)
+      delete state.sandboxId
+      delete state.opencodePassword
+      state.sessionByProfile = {}
+      stateStore.set(state)
+
       await sendChunkedInteractionResponse(interaction, res, "Sandbox stopped for this thread.")
       return
     }

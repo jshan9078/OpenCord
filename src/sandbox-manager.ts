@@ -119,9 +119,21 @@ export class SandboxManager {
       sandbox = await this.createSandbox(channelId, repoUrl, branch)
     }
 
-    const context = await this.ensureOpenCodeServer(sandbox)
-    this.cache.set(channelId, context)
-    return context
+    try {
+      const context = await this.ensureOpenCodeServer(sandbox)
+      this.cache.set(channelId, context)
+      return context
+    } catch (error) {
+      if (!sandboxIdFromState || !isSandboxStoppedError(error)) {
+        throw error
+      }
+
+      console.log(`[SandboxManager] Sandbox ${sandboxIdFromState} was stopped; creating a new sandbox`)
+      const freshSandbox = await this.createSandbox(channelId, repoUrl, branch)
+      const context = await this.ensureOpenCodeServer(freshSandbox)
+      this.cache.set(channelId, context)
+      return context
+    }
   }
 
   private async createSandbox(channelId: string, repoUrl?: string, branch = "main"): Promise<Sandbox> {
@@ -686,17 +698,20 @@ export class SandboxManager {
     return undefined
   }
 
-  async stop(channelId: string): Promise<void> {
+  async stop(channelId: string, sandboxIdFromState?: string): Promise<void> {
     const context = this.cache.get(channelId)
-    if (context) {
+    const sandboxId = context?.sandboxId || sandboxIdFromState
+
+    if (sandboxId) {
       try {
-        const sandbox = await Sandbox.get({ sandboxId: context.sandboxId })
+        const sandbox = await Sandbox.get({ sandboxId })
         await sandbox.stop()
       } catch (e) {
-        // Already stopped
+        // Already stopped or unavailable
       }
-      this.cache.delete(channelId)
     }
+
+    this.cache.delete(channelId)
   }
 
   async stopAll(): Promise<void> {
@@ -713,6 +728,28 @@ function generatePassword(): string {
     result += chars.charAt(Math.floor(Math.random() * chars.length))
   }
   return result
+}
+
+function isSandboxStoppedError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false
+  }
+
+  const maybeError = error as {
+    response?: { status?: number }
+    json?: { error?: { code?: string } }
+    message?: string
+  }
+
+  if (maybeError.response?.status === 410) {
+    return true
+  }
+
+  if (maybeError.json?.error?.code === "sandbox_stopped") {
+    return true
+  }
+
+  return (maybeError.message || "").includes("sandbox_stopped")
 }
 
 export function getSandboxManager(): SandboxManager {
