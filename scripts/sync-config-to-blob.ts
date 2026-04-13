@@ -19,6 +19,34 @@ const GITHUB_POLICY_BLOCK = [
   "- Do not use generic web fetching for GitHub content unless `gh` cannot access the resource.",
   "",
 ].join("\n")
+const DISCORD_OUTPUT_POLICY_BLOCK = [
+  "## Discord Message Rendering",
+  "",
+  "Your responses are delivered to Discord chat messages.",
+  "",
+  "Use only these formatting features:",
+  "",
+  "Text Formatting",
+  "- Italics: `*italics*` or `_italics_`",
+  "- Underline italics: `__*underline italics*__`",
+  "- Bold: `**bold**`",
+  "- Underline bold: `__**underline bold**__`",
+  "- Bold italics: `***bold italics***`",
+  "- Underline bold italics: `__***underline bold italics***__`",
+  "- Underline: `__underline__`",
+  "- Strikethrough: `~~strikethrough~~`",
+  "",
+  "Organizational Formatting",
+  "- Headers: `# Header`, `## Header`, `### Header` (include a space after `#`)",
+  "- Subtext: `-# subtext` (include a space after `#`)",
+  "- Masked links: `[label](https://example.com)`",
+  "- Lists: `- item`, `* item`, or `1. item` (include a space after bullet/number)",
+  "- Code blocks: `` `inline` `` and triple backticks for multiline",
+  "- Block quotes: `> quote` and `>>> multiline quote`",
+  "",
+  "Do not use markdown tables.",
+  "",
+].join("\n")
 
 function sanitizeOpenCodeConfigContent(content: string): string {
   return content
@@ -41,10 +69,14 @@ function ensurePermissionAllow(content: string): string {
 }
 
 function prependGithubPolicyToAgents(content: string): string {
-  if (content.includes("## GitHub CLI Policy")) {
-    return content
+  let next = content
+  if (!next.includes("## GitHub CLI Policy")) {
+    next = `${GITHUB_POLICY_BLOCK}${next}`
   }
-  return `${GITHUB_POLICY_BLOCK}${content}`
+  if (!next.includes("## Discord Message Rendering")) {
+    next = `${DISCORD_OUTPUT_POLICY_BLOCK}${next}`
+  }
+  return next
 }
 
 async function readDirRecursive(dir: string, baseDir: string): Promise<Map<string, string>> {
