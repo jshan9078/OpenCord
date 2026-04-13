@@ -20,6 +20,27 @@ You (Discord)          ←    Streams results back
 - **Real-time streaming** - watch the agent work as events arrive
 - **No always-on host** - fully serverless on Vercel
 
+## How Vercel Sandbox Works
+
+Vercel Sandboxes provide isolated, ephemeral environments for running code. When you interact with the Discord bridge, here's what happens:
+
+```
+1. Discord Command → Vercel Function receives your request
+2. Sandbox Allocation → A sandbox is assigned to your channel (or created if new)
+3. OpenCode Boots → The sandbox environment initializes with your config
+4. Task Execution → OpenCode runs your coding request in the isolated sandbox
+5. Response Streaming → Results stream back to Discord in real-time
+6. Sandbox Persistence → Sandboxes remain warm for a period, then cold-start fresh next time
+```
+
+**Key concepts:**
+
+- **Per-channel sandboxes** - Each Discord channel gets its own persistent sandbox that survives across requests. Your tools, git state, and working directory persist until the sandbox is reclaimed.
+- **Cold starts** - If a sandbox is cold, expect a brief delay (5-30 seconds) while it initializes. Warm sandboxes respond instantly.
+- **Isolation** - Each sandbox is fully isolated with its own filesystem, environment, and processes. No cross-contamination between channels.
+- **Automatic lifecycle** - Vercel manages sandbox creation, warming, and cleanup. Sandboxes are reclaimed after periods of inactivity.
+- **State persistence** - Files created in the sandbox persist during its lifetime. Clone repos, install dependencies, create files—all saved until the sandbox is reclaimed.
+
 ## Quick Start
 
 ### 1. Create a Discord Application
