@@ -1320,6 +1320,7 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
 
     let responseBuffer = ""
     let streamedLength = 0
+    let assistantStreamStarted = false
     let assistantMessageId: string | undefined
     let assistantMessageText = ""
     let lastAssistantFlushAt = 0
@@ -1395,6 +1396,7 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
             streamedLength += chunk.length
             remaining = remaining.slice(chunk.length)
             lastAssistantFlushAt = now
+            assistantStreamStarted = true
             continue
           }
           assistantMessageId = undefined
@@ -1414,6 +1416,7 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
         streamedLength += chunk.length
         remaining = remaining.slice(chunk.length)
         lastAssistantFlushAt = now
+        assistantStreamStarted = true
       }
     }
 
@@ -1480,6 +1483,9 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
         await flushAssistantStream(false)
       },
       onReasoningDelta: async ({ partId, text, completed }) => {
+        if (assistantStreamStarted) {
+          return
+        }
         const key = partId || "unknown"
         reasoningBufferByPart.set(key, (reasoningBufferByPart.get(key) || "") + text)
         await flushReasoning(key, Boolean(completed))

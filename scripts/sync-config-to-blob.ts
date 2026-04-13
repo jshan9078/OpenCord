@@ -26,6 +26,9 @@ function buildGithubPolicyBlock(defaultLogin?: string): string {
   lines.push(
     "- The GitHub CLI (`gh`) is available.",
     "- For any GitHub-related task (GitHub URLs, repositories, pull requests, issues, comments, checks, releases), use `gh` commands first.",
+    "- GitHub CLI/API list operations are often paginated by default and may return partial results.",
+    "- When reporting totals or complete lists, request a sufficiently high `--limit` and paginate as needed before finalizing the answer.",
+    "- If you are not sure the result set is complete, state that clearly and continue pagination.",
     "- Do not use generic web fetching for GitHub content unless `gh` cannot access the resource.",
     "- For read-only repository questions (README, files, metadata), use `gh` without cloning when possible.",
     "- If the task requires editing files, running code, tests, or builds, clone the repository into the sandbox first and then work locally.",
