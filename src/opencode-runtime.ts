@@ -112,14 +112,22 @@ export class OpencodeRuntime {
       modelsByProvider.get(providerId)!.push({ id: modelId })
     }
 
-    const providers: ProviderRecord[] = Object.entries(methodsByProvider).map(([id, methods]) => ({
-      id,
-      methods: methods.map((method) => ({
-        label: method.label,
-        kind: classifyAuthMethod(method.label),
-      })),
-      models: modelsByProvider.get(id) || [],
-    }))
+    const providerIds = new Set<string>([
+      ...Object.keys(methodsByProvider),
+      ...modelsByProvider.keys(),
+    ])
+
+    const providers: ProviderRecord[] = [...providerIds].map((id) => {
+      const methods = methodsByProvider[id] || []
+      return {
+        id,
+        methods: methods.map((method) => ({
+          label: method.label,
+          kind: classifyAuthMethod(method.label),
+        })),
+        models: modelsByProvider.get(id) || [],
+      }
+    })
 
     registry.setProviders(providers)
   }
