@@ -18,7 +18,7 @@ export interface EventStreamClient {
 
 export interface EventRelaySink {
   onTextDelta(text: string): Promise<void>
-  onReasoningDelta?(text: string): Promise<void>
+  onReasoningDelta?(payload: { partId: string; text: string; completed?: boolean }): Promise<void>
   onToolActivity(message: string): Promise<void>
   onToolRequest?(payload: {
     toolCallId?: string
@@ -300,7 +300,11 @@ export async function relaySessionEvents(
         const partType = partId ? partTypeById.get(partId) : undefined
         if (partType === "reasoning") {
           if (sink.onReasoningDelta) {
-            await sink.onReasoningDelta(delta)
+            await sink.onReasoningDelta({ partId: partId || "", text: delta })
+          }
+          if (partId) {
+            const key = `reasoning:${partId}`
+            lastTextByPart.set(key, (lastTextByPart.get(key) || "") + delta)
           }
           continue
         }
@@ -337,7 +341,7 @@ export async function relaySessionEvents(
               sawTextDelta = true
               await sink.onTextDelta(pending.join(""))
             } else if (partType === "reasoning" && sink.onReasoningDelta) {
-              await sink.onReasoningDelta(pending.join(""))
+              await sink.onReasoningDelta({ partId, text: pending.join("") })
             }
             pendingDeltaByPart.delete(partId)
           }
@@ -357,6 +361,27 @@ export async function relaySessionEvents(
               }
               lastTextByPart.set(partId || "", nextText)
             }
+          }
+        }
+
+        if (part?.type === "reasoning" && sink.onReasoningDelta && partId) {
+          const nextText = asText(part.text)
+          const previous = lastTextByPart.get(`reasoning:${partId}`) || ""
+
+          if (nextText.length > previous.length && nextText.startsWith(previous)) {
+            const delta = nextText.slice(previous.length)
+            if (delta) {
+              await sink.onReasoningDelta({ partId, text: delta })
+            }
+          } else if (nextText && nextText !== previous) {
+            await sink.onReasoningDelta({ partId, text: nextText })
+          }
+
+          lastTextByPart.set(`reasoning:${partId}`, nextText)
+
+          const time = part.time && typeof part.time === "object" ? part.time as Record<string, unknown> : undefined
+          if (typeof time?.end === "number") {
+            await sink.onReasoningDelta({ partId, text: "", completed: true })
           }
         }
 
@@ -386,7 +411,7 @@ export async function relaySessionEvents(
             toolStatusByPart.set(toolPartId, status)
           }
 
-          if (status === "pending" || status === "running") {
+          if (status === "running") {
             if (status !== previousStatus) {
               await sink.onToolActivity(`Running tool: ${tool}`)
               if (sink.onToolRequest) {

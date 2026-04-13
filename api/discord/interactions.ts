@@ -1257,30 +1257,48 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
       : undefined
 
     let responseBuffer = ""
-    let reasoningBuffer = ""
+    const reasoningBufferByPart = new Map<string, string>()
+    const reasoningMessageIdByPart = new Map<string, string>()
+    const lastReasoningSentLengthByPart = new Map<string, number>()
     let toolEvents = 0
     const toolMessageByCall = new Map<string, string>()
     let toolSequence = 0
     const threadIdForFollowups = effectiveThreadId
 
-    const flushReasoning = async (force = false): Promise<void> => {
-      const trimmed = reasoningBuffer.trim()
+    const flushReasoning = async (partId: string, force = false): Promise<void> => {
+      const trimmed = (reasoningBufferByPart.get(partId) || "").trim()
       if (!trimmed) {
         return
       }
 
-      if (!force && trimmed.length < 220 && !trimmed.includes("\n\n")) {
+      const lastSentLength = lastReasoningSentLengthByPart.get(partId) || 0
+      if (!force && trimmed.length - lastSentLength < 60) {
         return
       }
 
-      reasoningBuffer = ""
-      await sendFollowup(
+      const clipped = trimmed.length > 1800 ? `${trimmed.slice(0, 1799)}...` : trimmed
+      const content = `> 💭 ${clipped}`
+      const reasoningMessageId = reasoningMessageIdByPart.get(partId)
+
+      if (threadIdForFollowups && reasoningMessageId) {
+        const updated = await editThreadMessage(threadIdForFollowups, reasoningMessageId, content)
+        if (updated) {
+          lastReasoningSentLengthByPart.set(partId, trimmed.length)
+          return
+        }
+      }
+
+      const messageId = await sendFollowup(
         interaction.application_id,
         interaction.token,
-        `> 💭 ${trimmed}`,
+        content,
         undefined,
         threadIdForFollowups,
       )
+      if (messageId) {
+        reasoningMessageIdByPart.set(partId, messageId)
+      }
+      lastReasoningSentLengthByPart.set(partId, trimmed.length)
     }
 
     const result = await executePromptForChannel(
@@ -1298,9 +1316,10 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
       onTextDelta: async (text) => {
         responseBuffer += text
       },
-      onReasoningDelta: async (text) => {
-        reasoningBuffer += text
-        await flushReasoning(false)
+      onReasoningDelta: async ({ partId, text, completed }) => {
+        const key = partId || "unknown"
+        reasoningBufferByPart.set(key, (reasoningBufferByPart.get(key) || "") + text)
+        await flushReasoning(key, Boolean(completed))
       },
       onToolActivity: async () => {},
       onToolRequest: async (payload) => {
@@ -1359,7 +1378,9 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
       registry.getModel(selection.providerId, selection.modelId)?.contextWindow,
     )
 
-    await flushReasoning(true)
+    for (const partId of reasoningBufferByPart.keys()) {
+      await flushReasoning(partId, true)
+    }
 
     const text = stripInternalReasoningLeak(stripPromptEcho(responseBuffer.trim(), prompt))
     if (result.hadError) {
@@ -1752,9 +1773,10 @@ export default async function handler(
         value: `${r.fullName.split("/")[0]}:${r.name}`,
         description: r.defaultBranch,
       }))
-      await sendChunkedInteractionResponse(interaction, res, "Select a repository:", {
+      await sendNodeResponse(res, json({
         type: 4,
         data: {
+          content: "Select a repository:",
           components: [
             {
               type: 1,
@@ -1769,7 +1791,7 @@ export default async function handler(
             },
           ],
         },
-      })
+      }))
       return
     }
 
