@@ -324,6 +324,9 @@ export class SandboxManager {
         "-lc",
         "printf '%s\\n' '#!/bin/sh' 'prompt=\"$1\"' 'case \"$prompt\" in' '*Username*) echo \"x-access-token\" ;;' '*Password*) echo \"$GITHUB_TOKEN\" ;;' '*) echo \"\" ;;' 'esac' > /tmp/git-askpass.sh && chmod 700 /tmp/git-askpass.sh",
       ],
+      env: {
+        GITHUB_TOKEN: process.env.GITHUB_TOKEN,
+      },
     })
   }
 

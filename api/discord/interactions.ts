@@ -1344,185 +1344,37 @@ async function handleOpencodeCommand(interaction: Interaction, projectInput?: st
   }
 
   const parsedProject = parseProjectInput(projectInput)
-  const entries = await workspaceStore.listEntries(userId, parsedProject.project)
-
-  const options = [
-    ...entries.slice(0, 12).map((entry) => ({
-      label: `Resume: ${truncateLabel(entry.name, 70)}`,
-      value: `resume:${entry.id}`,
-      description: entry.snapshotId ? `snapshot ${entry.snapshotId.slice(0, 10)}` : "latest workspace state",
-    })),
-    ...entries.slice(0, 6).map((entry) => ({
-      label: `Delete: ${truncateLabel(entry.name, 70)}`,
-      value: `delete:${entry.id}`,
-      description: "remove saved workspace entry",
-    })),
-    {
-      label: "New",
-      value: "new",
-      description: "start new project session",
-    },
-  ].slice(0, 25)
-
-  return json({
-    type: 4,
-    data: {
-      content: `Select a saved workspace for **${parsedProject.project}** (resume/delete) or choose New:`,
-      components: [
-        {
-          type: 1,
-          components: [
-            {
-              type: 3,
-              custom_id: `opencode:pick:${userId}:${parsedProject.project}:${parsedProject.branch}`,
-              placeholder: "Choose resume, delete, or new",
-              options,
-            },
-          ],
-        },
-      ],
-    },
-  })
-}
-
-async function handleOpencodePicker(interaction: Interaction): Promise<Response> {
-  const customId = interaction.data?.custom_id
-  const selected = interaction.data?.values?.[0]
-  if (!customId || !selected) {
-    return json({ type: 4, data: { content: "Missing selection." } })
-  }
-
-  const parts = customId.split(":")
-  if (parts.length < 5) {
-    return json({ type: 4, data: { content: "Invalid picker data." } })
-  }
-
-  const [, , userId, project, branch] = parts
-  const channelId = interaction.channel_id
-  if (!channelId) {
-    return json({ type: 4, data: { content: "Missing channel." } })
-  }
-
-  const [{ WorkspaceEntryStore }] = await Promise.all([
-    import("../../src/workspace-entry-store.js"),
-  ])
-
-  const workspaceStore = new WorkspaceEntryStore()
-
-  if (selected.startsWith("delete:")) {
-    const entryId = selected.slice("delete:".length)
-    const existing = await workspaceStore.getEntry(userId, project, entryId)
-    const deleted = await workspaceStore.deleteEntry(userId, project, entryId)
-    if (deleted && existing?.threadId) {
-      const binding = await workspaceStore.getThreadBinding(existing.threadId)
-      if (binding?.workspaceEntryId === entryId) {
-        await workspaceStore.setThreadBinding({
-          threadId: binding.threadId,
-          userId: binding.userId,
-          updatedAt: Date.now(),
-        })
-      }
-    }
-    return json({
-      type: 7,
-      data: {
-        content: deleted
-          ? `Deleted saved workspace entry for **${project}**.`
-          : "Could not find that workspace entry.",
-        components: [],
-      },
-    })
-  }
-
-  if (selected.startsWith("resume:")) {
-    const entryId = selected.slice("resume:".length)
-    const entry = await workspaceStore.getEntry(userId, project, entryId)
-    if (!entry) {
-      return json({ type: 7, data: { content: "Saved workspace entry not found.", components: [] } })
-    }
-
-    if (entry.threadId && await isThreadChannel(entry.threadId)) {
-      await startThreadSession(entry.threadId, entry.repoUrl, entry.branch || branch || "main", {
-        snapshotId: entry.snapshotId,
-        resetSessions: false,
-      })
-      await workspaceStore.setThreadBinding({
-        threadId: entry.threadId,
-        userId,
-        project,
-        workspaceEntryId: entry.id,
-        hasCustomName: true,
-        updatedAt: Date.now(),
-      })
-      return json({
-        type: 7,
-        data: {
-          content: `Resuming this session in <#${entry.threadId}>.`,
-          components: [],
-        },
-      })
-    }
-
-    const threadId = await createThreadFromChannel(channelId, `OpenCode ${project}`)
-    if (!threadId) {
-      return json({ type: 7, data: { content: "Failed to create resume thread.", components: [] } })
-    }
-
-    await startThreadSession(threadId, entry.repoUrl, entry.branch || branch || "main", {
-      snapshotId: entry.snapshotId,
-      resetSessions: false,
-    })
-    await workspaceStore.setThreadBinding({
-      threadId,
-      userId,
-      project,
-      workspaceEntryId: entry.id,
-      updatedAt: Date.now(),
-    })
-    await workspaceStore.updateEntry(userId, project, entry.id, { threadId })
-
-    return json({
-      type: 7,
-      data: {
-        content: `Resuming this session in <#${threadId}>.`,
-        components: [],
-      },
-    })
-  }
-
-  const parsedProject = parseProjectInput(project)
-  const threadId = await createThreadFromChannel(channelId, `OpenCode ${project}`)
+  const threadId = await createThreadFromChannel(channelId, `OpenCode ${parsedProject.project}`)
   if (!threadId) {
-    return json({ type: 7, data: { content: "Failed to create thread.", components: [] } })
+    return json({ type: 4, data: { content: "Failed to create thread." } })
   }
 
   const rawBaselineSnapshotId = await ensureRawBaselineSnapshot()
-  await startThreadSession(threadId, parsedProject.repoUrl, branch || parsedProject.branch, {
+  await startThreadSession(threadId, parsedProject.repoUrl, parsedProject.branch, {
     snapshotId: rawBaselineSnapshotId,
     resetSessions: true,
     cloneRepoOnSnapshot: true,
   })
   const entry = await workspaceStore.createEntry({
     userId,
-    project,
+    project: parsedProject.project,
     repoUrl: parsedProject.repoUrl,
-    branch: branch || parsedProject.branch,
+    branch: parsedProject.branch,
     name: `New session ${new Date().toISOString()}`,
     threadId,
   })
   await workspaceStore.setThreadBinding({
     threadId,
     userId,
-    project,
+    project: parsedProject.project,
     workspaceEntryId: entry.id,
     updatedAt: Date.now(),
   })
 
   return json({
-    type: 7,
+    type: 4,
     data: {
       content: `Started a new session in <#${threadId}>.`,
-      components: [],
     },
   })
 }
@@ -1552,57 +1404,6 @@ async function processOpencodeCommandInteraction(interaction: Interaction, proje
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error"
     await sendFollowup(interaction.application_id, interaction.token, `Failed to start opencode session: ${message}`)
-  }
-}
-
-async function processOpencodePickerInteraction(interaction: Interaction): Promise<void> {
-  try {
-    const response = await handleOpencodePicker(interaction)
-    const raw = await response.text()
-    let content = "Selection processed."
-    let components: unknown[] | undefined
-
-    try {
-      const parsed = JSON.parse(raw) as { data?: { content?: string; components?: unknown[] } }
-      if (parsed.data?.content) {
-        content = parsed.data.content
-      }
-      if (Array.isArray(parsed.data?.components)) {
-        components = parsed.data.components
-      }
-    } catch {
-      if (raw) {
-        content = raw
-      }
-    }
-
-    const threadMatch = content.match(/^Started a new session in <#(\d+)>\.$|^Resuming this session in <#(\d+)>\.$/)
-    const targetThreadId = threadMatch?.[1] || threadMatch?.[2]
-    const userId = getInteractionUserId(interaction)
-    if (targetThreadId && userId && process.env.DISCORD_BOT_TOKEN) {
-      const notifyContent = content.startsWith("Started a new session")
-        ? `<@${userId}> Started a new session here. Use /ask to begin.`
-        : `<@${userId}> Resumed this session. Use /ask to continue.`
-
-      await sendDiscordRateLimitedRequest(
-        `https://discord.com/api/v10/channels/${targetThreadId}/messages`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
-          },
-          body: JSON.stringify({ content: notifyContent }),
-        },
-      ).catch(() => null)
-
-      return
-    }
-
-    await sendFollowup(interaction.application_id, interaction.token, content, components)
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error"
-    await sendFollowup(interaction.application_id, interaction.token, `Failed to process selection: ${message}`)
   }
 }
 
@@ -2588,17 +2389,6 @@ export default async function handler(
       }
       if (interaction.data?.custom_id?.startsWith("page:")) {
         await sendNodeResponse(res, await handlePageButtonInteraction(interaction))
-        return
-      }
-      if (interaction.data?.custom_id?.startsWith("opencode:")) {
-        waitUntil(processOpencodePickerInteraction(interaction))
-        await sendNodeResponse(res, json({
-          type: 7,
-          data: {
-            content: "Processing selection...",
-            components: [],
-          },
-        }))
         return
       }
       await sendNodeResponse(res, json({ type: 4, data: { content: "Unknown interaction." } }))
