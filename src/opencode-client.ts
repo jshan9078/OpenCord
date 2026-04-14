@@ -20,6 +20,65 @@ type ProviderListProvider = {
   models: Record<string, ProviderListModel>
 }
 
+function createSseStream(
+  baseUrl: string,
+  password: string | undefined,
+  signal?: AbortSignal,
+): AsyncIterable<RuntimeEvent> {
+  const url = new URL("/event", baseUrl).toString()
+  const auth = password ? `Basic ${Buffer.from(`opencode:${password}`).toString("base64")}` : undefined
+
+  return {
+    async *[Symbol.asyncIterator](): AsyncIterator<RuntimeEvent> {
+      const headers = new Headers()
+      if (auth) {
+        headers.set("Authorization", auth)
+      }
+
+      const response = await fetch(url, { headers, signal })
+      if (!response.ok) {
+        throw new Error(`Event subscribe failed: ${response.status} ${response.statusText}`)
+      }
+      if (!response.body) {
+        throw new Error("Event subscribe returned no body")
+      }
+
+      const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
+      let buffer = ""
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) {
+            break
+          }
+
+          buffer += value
+          const chunks = buffer.split("\n\n")
+          buffer = chunks.pop() ?? ""
+
+          for (const chunk of chunks) {
+            const dataLines = chunk
+              .split("\n")
+              .filter((line) => line.startsWith("data:"))
+              .map((line) => line.replace(/^data:\s*/, ""))
+
+            if (dataLines.length === 0) {
+              continue
+            }
+
+            const raw = dataLines.join("\n")
+            const parsed = JSON.parse(raw) as RuntimeEvent
+            yield parsed
+          }
+        }
+      } finally {
+        reader.releaseLock()
+      }
+    },
+  }
+}
+
 function withOptionalAuth(password?: string): ((input: RequestInfo | URL, init?: RequestInit) => Promise<Response>) | undefined {
   if (!password) {
     return undefined
@@ -83,7 +142,7 @@ export interface OpencodeClient {
   }
 }
 
-function createRuntimeClient(sdk: SdkClient): OpencodeClient {
+function createRuntimeClient(sdk: SdkClient, baseUrl: string, password?: string): OpencodeClient {
   return {
     auth: {
       set: async (input) => {
@@ -128,8 +187,7 @@ function createRuntimeClient(sdk: SdkClient): OpencodeClient {
     },
     event: {
       subscribe: async (input) => {
-        const events = await sdk.event.subscribe(input as never)
-        return { stream: events.stream as AsyncIterable<RuntimeEvent> }
+        return { stream: createSseStream(baseUrl, password, input?.signal) }
       },
     },
   }
@@ -143,7 +201,7 @@ export function createSandboxOpencodeClient(baseUrl: string, password?: string):
     throwOnError: true,
     responseStyle: "data",
   })
-  return createRuntimeClient(sdkClient)
+  return createRuntimeClient(sdkClient, baseUrl, password)
 }
 
 export async function syncProviderRegistry(client: OpencodeClient, registry: ProviderRegistry): Promise<void> {
