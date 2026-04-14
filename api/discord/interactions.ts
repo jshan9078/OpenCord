@@ -1,3 +1,4 @@
+import { createHmac } from "crypto"
 import nacl from "tweetnacl"
 import { waitUntil } from "@vercel/functions"
 import { Sandbox } from "@vercel/sandbox"
@@ -55,6 +56,11 @@ type Interaction = {
       options?: Array<{ name: string; type: number; value?: string | number | boolean; focused?: boolean }>
     }>
   }
+}
+
+type InternalDrainRequest = {
+  type: "internal-drain-thread"
+  threadId: string
 }
 
 const DISCORD_MESSAGE_LIMIT = 1800
@@ -122,6 +128,72 @@ function verifyDiscordRequest(
   const sig = Buffer.from(signature, "hex")
   const key = Buffer.from(publicKey, "hex")
   return nacl.sign.detached.verify(msg, sig, key)
+}
+
+function getInternalDispatchSecret(): string | undefined {
+  return process.env.DISCORD_BOT_TOKEN || process.env.BLOB_READ_WRITE_TOKEN || undefined
+}
+
+function signInternalDispatch(body: string, timestamp: string): string | undefined {
+  const secret = getInternalDispatchSecret()
+  if (!secret) {
+    return undefined
+  }
+  return createHmac("sha256", secret).update(`${timestamp}.${body}`).digest("hex")
+}
+
+function verifyInternalDispatch(body: string, timestamp: string, signature: string): boolean {
+  const expected = signInternalDispatch(body, timestamp)
+  return Boolean(expected && signature && expected === signature)
+}
+
+function getRequestOrigin(req: { url?: string; headers: Record<string, string | string[] | undefined> }): string | undefined {
+  if (req.url) {
+    try {
+      return new URL(req.url).origin
+    } catch {
+      // Fall through to header-based reconstruction.
+    }
+  }
+
+  const protoHeader = req.headers["x-forwarded-proto"]
+  const hostHeader = req.headers["x-forwarded-host"] || req.headers.host
+  const proto = Array.isArray(protoHeader) ? protoHeader[0] : protoHeader
+  const host = Array.isArray(hostHeader) ? hostHeader[0] : hostHeader
+  if (proto && host) {
+    return `${proto}://${host}`
+  }
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`
+  }
+  return undefined
+}
+
+async function triggerThreadDrain(threadId: string, origin: string | undefined): Promise<void> {
+  if (!origin) {
+    return
+  }
+
+  const body = JSON.stringify({ type: "internal-drain-thread", threadId } satisfies InternalDrainRequest)
+  const timestamp = Date.now().toString()
+  const signature = signInternalDispatch(body, timestamp)
+  if (!signature) {
+    return
+  }
+
+  try {
+    await fetch(new URL("/api/discord/interactions", origin), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-opencode-internal-timestamp": timestamp,
+        "x-opencode-internal-signature": signature,
+      },
+      body,
+    })
+  } catch (error) {
+    console.error("triggerThreadDrain failed:", error)
+  }
 }
 
 async function sendFollowup(
@@ -2331,7 +2403,7 @@ async function executeQueuedAskRun(run: AskQueueRunRequest): Promise<void> {
   }
 }
 
-async function processAskInteraction(interaction: Interaction, prompt: string): Promise<void> {
+async function processAskInteraction(interaction: Interaction, prompt: string, origin?: string): Promise<void> {
   try {
     const channelId = interaction.channel_id
     const userId = getInteractionUserId(interaction)
@@ -2382,7 +2454,7 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
         : `Queued for this thread. ${runsAhead} run${runsAhead === 1 ? " is" : "s are"} ahead.`
 
     await updateOriginalResponse(interaction.application_id, interaction.token, statusMessage)
-    await drainThreadAskQueue(channelId)
+    await triggerThreadDrain(channelId, origin)
   } catch (error) {
     console.error("processAskInteraction failed:", error)
     const message = error instanceof Error ? error.message : "Unknown error"
@@ -2390,7 +2462,7 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
   }
 }
 
-async function drainThreadAskQueue(threadId: string): Promise<void> {
+async function drainThreadAskQueue(threadId: string, origin?: string): Promise<void> {
   const [{ ThreadRuntimeStore }, { ThreadAskQueueStore }] = await Promise.all([
     import("../../src/thread-runtime-store.js"),
     import("../../src/thread-ask-queue-store.js"),
@@ -2398,46 +2470,42 @@ async function drainThreadAskQueue(threadId: string): Promise<void> {
 
   const runtimeStore = new ThreadRuntimeStore()
   const queueStore = new ThreadAskQueueStore()
-  while (true) {
-    const lease = await runtimeStore.acquireRunLock(threadId, 60_000, `queue:${threadId}`)
-    if (!lease.acquired || !lease.runId) {
+  const lease = await runtimeStore.acquireRunLock(threadId, 60_000, `queue:${threadId}`)
+  if (!lease.acquired || !lease.runId) {
+    return
+  }
+
+  let heartbeat: ReturnType<typeof setInterval> | undefined
+  try {
+    heartbeat = setInterval(() => {
+      void runtimeStore.refreshRunLock(threadId, lease.runId as string, 60_000)
+    }, 20_000)
+
+    await runtimeStore.refreshRunLock(threadId, lease.runId, 60_000)
+    const nextRun = await queueStore.peekNextRun(threadId)
+    if (!nextRun) {
       return
     }
 
-    let heartbeat: ReturnType<typeof setInterval> | undefined
-    try {
-      heartbeat = setInterval(() => {
-        void runtimeStore.refreshRunLock(threadId, lease.runId as string, 60_000)
-      }, 20_000)
-
-      while (true) {
-        await runtimeStore.refreshRunLock(threadId, lease.runId, 60_000)
-        const nextRun = await queueStore.peekNextRun(threadId)
-        if (!nextRun) {
-          break
-        }
-
-        await executeQueuedAskRun({
-          interactionId: nextRun.interactionId,
-          applicationId: nextRun.applicationId,
-          token: nextRun.token,
-          channelId: nextRun.channelId,
-          userId: nextRun.userId,
-          prompt: nextRun.prompt,
-        })
-        await queueStore.removeRun(nextRun)
-      }
-    } finally {
-      if (heartbeat) {
-        clearInterval(heartbeat)
-      }
-      await runtimeStore.releaseRunLock(threadId, lease.runId)
+    await executeQueuedAskRun({
+      interactionId: nextRun.interactionId,
+      applicationId: nextRun.applicationId,
+      token: nextRun.token,
+      channelId: nextRun.channelId,
+      userId: nextRun.userId,
+      prompt: nextRun.prompt,
+    })
+    await queueStore.removeRun(nextRun)
+  } finally {
+    if (heartbeat) {
+      clearInterval(heartbeat)
     }
+    await runtimeStore.releaseRunLock(threadId, lease.runId)
+  }
 
-    const remainingRun = await queueStore.peekNextRun(threadId)
-    if (!remainingRun) {
-      return
-    }
+  const remainingRun = await queueStore.peekNextRun(threadId)
+  if (remainingRun) {
+    await triggerThreadDrain(threadId, origin)
   }
 }
 
@@ -2472,10 +2540,29 @@ export default async function handler(
 
     const rawBody = await readNodeRequestBody(req)
     const body = rawBody.toString("utf-8")
+    const internalSignatureHeader = req.headers["x-opencode-internal-signature"]
+    const internalTimestampHeader = req.headers["x-opencode-internal-timestamp"]
+    const internalSignature = Array.isArray(internalSignatureHeader) ? internalSignatureHeader[0] || "" : internalSignatureHeader || ""
+    const internalTimestamp = Array.isArray(internalTimestampHeader) ? internalTimestampHeader[0] || "" : internalTimestampHeader || ""
+
+    if (internalSignature && internalTimestamp && verifyInternalDispatch(body, internalTimestamp, internalSignature)) {
+      const payload = JSON.parse(body) as Partial<InternalDrainRequest>
+      if (payload.type === "internal-drain-thread" && typeof payload.threadId === "string" && payload.threadId) {
+        const origin = getRequestOrigin(req)
+        waitUntil(drainThreadAskQueue(payload.threadId, origin))
+        await sendNodeResponse(res, json({ ok: true }))
+        return
+      }
+
+      await sendNodeResponse(res, json({ error: "Invalid internal payload" }, 400))
+      return
+    }
+
     const signatureHeader = req.headers["x-signature-ed25519"]
     const timestampHeader = req.headers["x-signature-timestamp"]
     const signature = Array.isArray(signatureHeader) ? signatureHeader[0] || "" : signatureHeader || ""
     const timestamp = Array.isArray(timestampHeader) ? timestampHeader[0] || "" : timestampHeader || ""
+    const origin = getRequestOrigin(req)
 
     if (!verifyDiscordRequest(body, signature, timestamp, publicKey)) {
       await sendNodeResponse(res, json({ error: "Invalid request signature" }, 401))
@@ -2537,7 +2624,7 @@ export default async function handler(
     const parsed = parseDiscordCommand(mapped.text)
 
     if (mapped.type === "prompt") {
-      waitUntil(processAskInteraction(interaction, mapped.text))
+      waitUntil(processAskInteraction(interaction, mapped.text, origin))
       await sendNodeResponse(res, json({ type: 5 }))
       return
     }
