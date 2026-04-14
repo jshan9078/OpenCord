@@ -252,10 +252,19 @@ export class SandboxManager {
     ].join(" && ")
 
     await this.ensureGitAskPassConfigured(sandbox)
-    console.log(`[SandboxManager] Cloning repo into ${target}: ${repoUrl}#${branch}`)
+    console.log(`[SandboxManager] Cloning repo into ${target}: ${repoUrl}#${branch}`, {
+      hasGitHubToken: Boolean(process.env.GITHUB_TOKEN),
+    })
     const result = await sandbox.runCommand({
       cmd: "bash",
-      args: ["-lc", `${this.buildCredentialsEnv()} GIT_ASKPASS=/tmp/git-askpass.sh GIT_TERMINAL_PROMPT=0 ${checkout}`],
+      args: ["-lc", checkout],
+      env: {
+        ...Object.fromEntries(
+          Object.entries(process.env).filter(([key]) => key.endsWith("_API_KEY") || key === "GITHUB_TOKEN"),
+        ),
+        GIT_ASKPASS: "/tmp/git-askpass.sh",
+        GIT_TERMINAL_PROMPT: "0",
+      },
     })
 
     const stdout = await result.stdout()
