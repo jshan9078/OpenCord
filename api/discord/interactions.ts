@@ -2268,7 +2268,7 @@ async function processAskInteraction(interaction: Interaction, prompt: string, o
     })
 
     const runtimeStore = new ThreadRuntimeStore()
-    const runtimeState = await runtimeStore.get(channelId)
+    let runtimeState = await runtimeStore.get(channelId)
 
     if (!runtimeState.sandboxId) {
       logAskStage("ask_no_session_autostart", { threadId: channelId, interactionId: interaction.id })
