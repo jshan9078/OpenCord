@@ -3,6 +3,7 @@ import { get, put } from "@vercel/blob"
 
 export interface ThreadRunLock {
   runId: string
+  interactionId?: string
   startedAt: number
   expiresAt: number
 }
@@ -136,10 +137,17 @@ export class ThreadRuntimeStore {
     })
   }
 
-  async acquireRunLock(threadId: string, ttlMs = 15 * 60_000): Promise<{ acquired: boolean; runId?: string }> {
+  async acquireRunLock(
+    threadId: string,
+    ttlMs = 15 * 60_000,
+    interactionId?: string,
+  ): Promise<{ acquired: boolean; runId?: string; duplicate?: boolean }> {
     const current = await this.get(threadId)
     const now = Date.now()
     if (current.runLock && current.runLock.expiresAt > now) {
+      if (interactionId && current.runLock.interactionId && current.runLock.interactionId === interactionId) {
+        return { acquired: false, duplicate: true }
+      }
       return { acquired: false }
     }
 
@@ -148,6 +156,7 @@ export class ThreadRuntimeStore {
       ...current,
       runLock: {
         runId,
+        interactionId,
         startedAt: now,
         expiresAt: now + ttlMs,
       },

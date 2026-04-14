@@ -1517,6 +1517,29 @@ async function processOpencodePickerInteraction(interaction: Interaction): Promi
       }
     }
 
+    const threadMatch = content.match(/^Started a new session in <#(\d+)>\.$|^Resuming this session in <#(\d+)>\.$/)
+    const targetThreadId = threadMatch?.[1] || threadMatch?.[2]
+    const userId = getInteractionUserId(interaction)
+    if (targetThreadId && userId && process.env.DISCORD_BOT_TOKEN) {
+      const notifyContent = content.startsWith("Started a new session")
+        ? `<@${userId}> Started a new session here. Use /ask to begin.`
+        : `<@${userId}> Resumed this session. Use /ask to continue.`
+
+      await sendDiscordRateLimitedRequest(
+        `https://discord.com/api/v10/channels/${targetThreadId}/messages`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
+          },
+          body: JSON.stringify({ content: notifyContent }),
+        },
+      ).catch(() => null)
+
+      return
+    }
+
     await sendFollowup(interaction.application_id, interaction.token, content, components)
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error"
@@ -1793,8 +1816,11 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
     )
     return
   }
-  const lock = await threadRuntimeStore.acquireRunLock(conversationId)
+  const lock = await threadRuntimeStore.acquireRunLock(conversationId, 15 * 60_000, interaction.id)
   if (!lock.acquired || !lock.runId) {
+    if (lock.duplicate) {
+      return
+    }
     await sendFollowup(
       interaction.application_id,
       interaction.token,
