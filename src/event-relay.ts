@@ -44,6 +44,8 @@ export interface EventRelayOptions {
   maxIdleMs?: number
   maxTotalMs?: number
   correlationToken?: string
+  targetUserMessageId?: string
+  targetUserMessagePromise?: Promise<string | undefined>
 }
 
 export interface EventRelayResult {
@@ -291,10 +293,16 @@ export async function relaySessionEvents(
   const pendingDeltaByPart = new Map<string, string[]>()
   const toolStatusByPart = new Map<string, string>()
   let lastAssistantMessageId: string | undefined
-  let targetUserMessageId: string | undefined
+  let targetUserMessageId: string | undefined = options.targetUserMessageId
   let targetAssistantMessageId: string | undefined
   let targetMessageCompleted = false
   const messageIdByPart = new Map<string, string>()
+
+  void options.targetUserMessagePromise?.then((messageId) => {
+    if (messageId && !targetUserMessageId) {
+      targetUserMessageId = messageId
+    }
+  }).catch(() => undefined)
 
   const isRelevantMessageId = (messageId: string | undefined): boolean => {
     if (!messageId) {

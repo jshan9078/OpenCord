@@ -67,6 +67,7 @@ export interface OpencodeClient {
   session: {
     create(input: { body: { title: string } }): Promise<{ id: string }>
     get(input: { path: { id: string } }): Promise<unknown>
+    messages(input: { path: { id: string } }): Promise<Array<{ info?: Record<string, unknown>; parts?: unknown[] }>>
     promptAsync(input: {
       path: { id: string }
       body: {
@@ -100,6 +101,7 @@ function createRuntimeClient(sdk: SdkClient): OpencodeClient {
     session: {
       create: async (input) => extractData<{ id: string }>(await sdk.session.create(input as never)),
       get: async (input) => await sdk.session.get(input as never),
+      messages: async (input) => extractData<Array<{ info?: Record<string, unknown>; parts?: unknown[] }>>(await sdk.session.messages(input as never)),
       promptAsync: async (input) => {
         const safeParts = Array.isArray(input.body?.parts) && input.body.parts.length > 0
           ? input.body.parts

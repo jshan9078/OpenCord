@@ -13,6 +13,39 @@ import type { ThreadRuntimeStore } from "./thread-runtime-store.js"
 
 export type RuntimeClientAdapter = Pick<OpencodeClient, "auth" | "provider" | "session" | "event">
 
+async function findPromptUserMessageId(
+  client: RuntimeClientAdapter,
+  sessionId: string,
+  correlationToken: string,
+): Promise<string | undefined> {
+  const deadline = Date.now() + 5_000
+
+  while (Date.now() < deadline) {
+    try {
+      const messages = await client.session.messages({ path: { id: sessionId } })
+      for (let index = messages.length - 1; index >= 0; index -= 1) {
+        const info = messages[index]?.info
+        if (!info || typeof info !== "object") {
+          continue
+        }
+
+        const role = typeof info.role === "string" ? info.role : ""
+        const system = typeof info.system === "string" ? info.system : ""
+        const id = typeof info.id === "string" ? info.id : ""
+        if (role === "user" && id && system.includes(correlationToken)) {
+          return id
+        }
+      }
+    } catch {
+      // Keep polling briefly while OpenCode persists the message.
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 150))
+  }
+
+  return undefined
+}
+
 export async function executePromptForChannel(
   client: OpencodeClient,
   registry: ProviderRegistry,
@@ -104,10 +137,19 @@ export async function executePromptForChannel(
   }
 
   const correlationToken = `bridge-correlation:${randomUUID()}`
+  let notifyPromptSubmitted = () => {}
+  const promptSubmitted = new Promise<void>((resolve) => {
+    notifyPromptSubmitted = resolve
+  })
+  const targetUserMessagePromise = (async () => {
+    await promptSubmitted
+    return await findPromptUserMessageId(client, sessionId, correlationToken)
+  })()
   const relayPromise = relaySessionEvents(client, sink, sessionId, {
     maxIdleMs: 45_000,
     maxTotalMs: 10 * 60_000,
     correlationToken,
+    targetUserMessagePromise,
   })
   const finalPrompt = options.recoveryContext
     ? [
@@ -123,17 +165,21 @@ export async function executePromptForChannel(
       ? [options.runtimeContext, "", prompt].join("\n")
       : prompt
 
-  await client.session.promptAsync({
-    path: { id: sessionId },
-    body: {
-      model: {
-        providerID: providerId,
-        modelID: modelId,
+  try {
+    await client.session.promptAsync({
+      path: { id: sessionId },
+      body: {
+        model: {
+          providerID: providerId,
+          modelID: modelId,
+        },
+        system: correlationToken,
+        parts: [{ type: "text", text: finalPrompt }],
       },
-      system: correlationToken,
-      parts: [{ type: "text", text: finalPrompt }],
-    },
-  })
+    })
+  } finally {
+    notifyPromptSubmitted()
+  }
   const relayResult = await relayPromise
 
   if (!relayResult.completed && relayResult.timedOut) {
