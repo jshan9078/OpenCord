@@ -91,7 +91,26 @@ function createRuntimeClient(sdk: SdkClient): OpencodeClient {
       create: async (input) => extractData<{ id: string }>(await sdk.session.create(input as never)),
       get: async (input) => await sdk.session.get(input as never),
       promptAsync: async (input) => {
-        await sdk.session.promptAsync(input as never)
+        const safeParts = Array.isArray(input.body?.parts) && input.body.parts.length > 0
+          ? input.body.parts
+          : [{ type: "text" as const, text: "" }]
+
+        const result = await sdk.session.promptAsync({
+          path: { id: input.path.id },
+          body: {
+            ...input.body,
+            parts: safeParts,
+          },
+        } as never)
+
+        const normalized = extractData<unknown>(result)
+        if (normalized && typeof normalized === "object" && "success" in normalized) {
+          const maybe = normalized as { success?: boolean; error?: unknown }
+          if (maybe.success === false) {
+            const details = typeof maybe.error === "string" ? maybe.error : JSON.stringify(maybe.error)
+            throw new Error(`prompt_async rejected: ${details}`)
+          }
+        }
       },
       diff: async (input) => extractData<Array<{ file?: string }>>(await sdk.session.diff(input as never)),
     },
