@@ -1800,6 +1800,17 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
             opencodePassword: resumed.opencodePassword,
           }
         }
+      } else if (threadBinding?.threadId) {
+        const rawBaselineSnapshotId = await ensureRawBaselineSnapshot()
+        const resumed = await startThreadSession(conversationId, undefined, "main", {
+          snapshotId: rawBaselineSnapshotId,
+          resetSessions: false,
+        })
+        threadRuntimeState = {
+          ...threadRuntimeState,
+          sandboxId: resumed.sandboxId,
+          opencodePassword: resumed.opencodePassword,
+        }
       }
     } catch (error) {
       console.error("Failed to auto-recover missing thread runtime:", error)
