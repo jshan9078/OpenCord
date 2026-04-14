@@ -666,7 +666,7 @@ async function sendFinalAskResponse(
   await sendFollowup(applicationId, token, clipped || "Done.", undefined, threadId)
 }
 
-interface AskRunRequest {
+interface AskQueueRunRequest {
   interactionId: string
   applicationId: string
   token: string
@@ -1691,25 +1691,29 @@ async function processDeleteInteraction(interaction: Interaction, channelId: str
       return
     }
 
-    const [{ ThreadRuntimeStore }, { WorkspaceEntryStore }, { getSandboxManager }] = await Promise.all([
+    const [{ ThreadRuntimeStore }, { WorkspaceEntryStore }, { getSandboxManager }, { ThreadAskQueueStore }] = await Promise.all([
       import("../../src/thread-runtime-store.js"),
       import("../../src/workspace-entry-store.js"),
       import("../../src/sandbox-manager.js"),
+      import("../../src/thread-ask-queue-store.js"),
     ])
 
     const runtimeStore = new ThreadRuntimeStore()
     const workspaceStore = new WorkspaceEntryStore()
     const sandboxManager = getSandboxManager()
+    const askQueueStore = new ThreadAskQueueStore()
     const runtime = await runtimeStore.get(channelId)
 
     if (!runtime.sandboxId) {
+      await askQueueStore.clearThread(channelId)
       await runtimeStore.clear(channelId)
-      await sendFollowup(interaction.application_id, interaction.token, "No active sandbox in this thread.")
+      await sendFollowup(interaction.application_id, interaction.token, "No active sandbox in this thread. Cleared any queued /ask runs.")
       return
     }
 
     await sandboxManager.stop(channelId, runtime.sandboxId)
     await runtimeStore.clear(channelId)
+    await askQueueStore.clearThread(channelId)
 
     const binding = await workspaceStore.getThreadBinding(channelId)
     if (binding?.project && binding.workspaceEntryId) {
@@ -1730,7 +1734,7 @@ async function processDeleteInteraction(interaction: Interaction, channelId: str
   }
 }
 
-async function executeAskRun(run: AskRunRequest): Promise<void> {
+async function executeQueuedAskRun(run: AskQueueRunRequest): Promise<void> {
   try {
   const [
     { ChannelStateStore },
@@ -1776,6 +1780,7 @@ async function executeAskRun(run: AskRunRequest): Promise<void> {
   }
 
   const effectiveThreadId = channelId
+  await updateOriginalResponse(run.applicationId, run.token, "Working...")
 
   const conversationId = effectiveThreadId
   const conversationState = stateStore.get(conversationId)
@@ -2310,7 +2315,7 @@ async function executeAskRun(run: AskRunRequest): Promise<void> {
       commandIsInThread ? "Done." : `Response posted in <#${threadIdForFollowups || channelId}>.`,
     )
   } catch (error) {
-    console.error("executeAskRun failed:", error)
+    console.error("executeQueuedAskRun failed:", error)
     const message = (error instanceof Error
       ? error.message
       : typeof error === "object" && error !== null
@@ -2349,8 +2354,16 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
       return
     }
 
-    await updateOriginalResponse(interaction.application_id, interaction.token, "Working...")
-    await executeAskRun({
+    const [{ ThreadAskQueueStore }, { ThreadRuntimeStore }] = await Promise.all([
+      import("../../src/thread-ask-queue-store.js"),
+      import("../../src/thread-runtime-store.js"),
+    ])
+
+    const queueStore = new ThreadAskQueueStore()
+    const runtimeStore = new ThreadRuntimeStore()
+    const runtimeState = await runtimeStore.get(channelId)
+    const queueResult = await queueStore.enqueue({
+      threadId: channelId,
       interactionId: interaction.id,
       applicationId: interaction.application_id,
       token: interaction.token,
@@ -2358,10 +2371,65 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
       userId,
       prompt,
     })
+
+    const activeAhead = runtimeState.runLock && runtimeState.runLock.expiresAt > Date.now() ? 1 : 0
+    const runsAhead = queueResult.aheadCount + activeAhead
+    const statusMessage = queueResult.duplicate
+      ? "This /ask is already queued for this thread."
+      : runsAhead === 0
+        ? "Queued. Starting now..."
+        : `Queued for this thread. ${runsAhead} run${runsAhead === 1 ? " is" : "s are"} ahead.`
+
+    await updateOriginalResponse(interaction.application_id, interaction.token, statusMessage)
+    await drainThreadAskQueue(channelId)
   } catch (error) {
     console.error("processAskInteraction failed:", error)
     const message = error instanceof Error ? error.message : "Unknown error"
     await updateOriginalResponse(interaction.application_id, interaction.token, `Request failed: ${message}`)
+  }
+}
+
+async function drainThreadAskQueue(threadId: string): Promise<void> {
+  const [{ ThreadRuntimeStore }, { ThreadAskQueueStore }] = await Promise.all([
+    import("../../src/thread-runtime-store.js"),
+    import("../../src/thread-ask-queue-store.js"),
+  ])
+
+  const runtimeStore = new ThreadRuntimeStore()
+  const queueStore = new ThreadAskQueueStore()
+  const lease = await runtimeStore.acquireRunLock(threadId, 60_000, `queue:${threadId}`)
+  if (!lease.acquired || !lease.runId) {
+    return
+  }
+
+  let heartbeat: ReturnType<typeof setInterval> | undefined
+  try {
+    heartbeat = setInterval(() => {
+      void runtimeStore.refreshRunLock(threadId, lease.runId as string, 60_000)
+    }, 20_000)
+
+    while (true) {
+      await runtimeStore.refreshRunLock(threadId, lease.runId, 60_000)
+      const nextRun = await queueStore.peekNextRun(threadId)
+      if (!nextRun) {
+        return
+      }
+
+      await executeQueuedAskRun({
+        interactionId: nextRun.interactionId,
+        applicationId: nextRun.applicationId,
+        token: nextRun.token,
+        channelId: nextRun.channelId,
+        userId: nextRun.userId,
+        prompt: nextRun.prompt,
+      })
+      await queueStore.removeRun(nextRun)
+    }
+  } finally {
+    if (heartbeat) {
+      clearInterval(heartbeat)
+    }
+    await runtimeStore.releaseRunLock(threadId, lease.runId)
   }
 }
 
