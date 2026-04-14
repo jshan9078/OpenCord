@@ -1,6 +1,6 @@
 /**
  * Maps Discord Interactions payloads (slash command options) to text commands.
- * Converts /ask, /project, /providers, etc. into parseable command strings.
+ * Converts /ask, /opencode, /providers, etc. into parseable command strings.
  */
 interface InteractionOption {
   name: string
@@ -20,11 +20,6 @@ function optionValue(data: InteractionCommandData, name: string): string | undef
     return undefined
   }
   return String(option.value)
-}
-
-function subcommandOptions(data: InteractionCommandData, subcommandName: string): InteractionOption[] | undefined {
-  const sub = data.options?.find((opt) => opt.name === subcommandName && opt.type === 1)
-  return sub?.options
 }
 
 export function mapInteractionCommandToText(
@@ -55,31 +50,6 @@ export function mapInteractionCommandToText(
     case "use-model": {
       const model = optionValue(data, "model") || ""
       return { type: "command", text: `use model ${model}`.trim() }
-    }
-    case "project": {
-      const setOpts = subcommandOptions(data, "set")
-      const clearOpts = subcommandOptions(data, "clear")
-      const showOpts = subcommandOptions(data, "show")
-      const selectOpts = subcommandOptions(data, "select")
-
-      if (selectOpts !== undefined) {
-        return { type: "command", text: "project select" }
-      }
-      if (setOpts) {
-        const repo = setOpts.find((o) => o.name === "repo")?.value as string | undefined
-        const branch = setOpts.find((o) => o.name === "branch")?.value as string | undefined
-        if (repo) {
-          const branchPart = branch ? ` ${branch}` : ""
-          return { type: "command", text: `project set ${repo}${branchPart}`.trim() }
-        }
-      }
-      if (clearOpts !== undefined) {
-        return { type: "command", text: "project clear" }
-      }
-      if (showOpts !== undefined) {
-        return { type: "command", text: "project show" }
-      }
-      return { type: "command", text: "project" }
     }
     case "auth-connect": {
       const provider = optionValue(data, "provider") || ""

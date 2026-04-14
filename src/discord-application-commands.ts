@@ -110,47 +110,6 @@ export function buildApplicationCommands(): DiscordApplicationCommand[] {
       ],
     },
     {
-      name: "project",
-      description: "Manage project (repo/branch) for this channel",
-      type: 1,
-      options: [
-        {
-          type: 1,
-          name: "select",
-          description: "Select repo and branch from your GitHub repos",
-        },
-        {
-          type: 1,
-          name: "set",
-          description: "Set project repo and branch manually",
-          options: [
-            {
-              type: 3,
-              name: "repo",
-              description: "GitHub repo (user/repo or full URL)",
-              required: true,
-            },
-            {
-              type: 3,
-              name: "branch",
-              description: "Branch name (default: main)",
-              required: false,
-            },
-          ],
-        },
-        {
-          type: 1,
-          name: "clear",
-          description: "Clear project for this channel",
-        },
-        {
-          type: 1,
-          name: "show",
-          description: "Show current project for this channel",
-        },
-      ],
-    },
-    {
       name: "auth-connect",
       description: "Show host-local OAuth setup command",
       type: 1,

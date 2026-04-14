@@ -1,6 +1,6 @@
 /**
  * Parses text commands (from slash command mapping) into structured types.
- * Handles providers, models, project, auth, and prompt commands.
+ * Handles providers, models, opencode, auth, and prompt commands.
  */
 export type ParsedCommand =
   | { type: "providers" }
@@ -10,10 +10,6 @@ export type ParsedCommand =
   | { type: "models"; providerId?: string }
   | { type: "use_provider"; providerId: string }
   | { type: "use_model"; modelId: string }
-  | { type: "project_select" }
-  | { type: "project_set"; repo: string; branch?: string }
-  | { type: "project_clear" }
-  | { type: "project_show" }
   | { type: "auth_connect"; providerId: string; methodHint?: string }
   | { type: "auth_set_key"; providerId: string }
   | { type: "auth_disconnect"; providerId: string }
@@ -73,33 +69,12 @@ function isLikelyCommandWord(firstWord: string): boolean {
     "auth",
     "opencode",
     "checkpoint",
-    "project",
     "help",
     "list",
     "switch",
     "connect",
     "set",
   ].includes(firstWord.toLowerCase())
-}
-
-function normalizeRepoUrl(url: string): string {
-  let normalized = url.trim()
-  if (normalized.startsWith("https://")) {
-    return normalized.replace(/\.git$/, "")
-  }
-  if (normalized.startsWith("git@")) {
-    const match = normalized.match(/^git@github\.com:(.+)$/)
-    if (match) {
-      return `https://github.com/${match[1]}`.replace(/\.git$/, "")
-    }
-  }
-  if (normalized.includes("/") && !normalized.includes("github.com")) {
-    return `https://github.com/${normalized}`
-  }
-  if (normalized.includes("github.com")) {
-    return `https://${normalized.replace(/^https?:\/\//, "")}`.replace(/\.git$/, "")
-  }
-  return normalized
 }
 
 export function parseDiscordCommand(input: string): ParsedCommand {
@@ -168,27 +143,6 @@ export function parseDiscordCommand(input: string): ParsedCommand {
     return { type: "use_model", modelId: tokens[2] }
   }
 
-  if (lower[0] === "project") {
-    if (lower[1] === "select") {
-      return { type: "project_select" }
-    }
-    if (lower[1] === "set") {
-      if (tokens.length < 3) {
-        return { type: "invalid", message: "Usage: project set <repo> [branch]" }
-      }
-      const repo = normalizeRepoUrl(tokens[2])
-      const branch = tokens[3] || "main"
-      return { type: "project_set", repo, branch }
-    }
-    if (lower[1] === "clear") {
-      return { type: "project_clear" }
-    }
-    if (lower[1] === "show" || lower[1] === undefined) {
-      return { type: "project_show" }
-    }
-    return { type: "invalid", message: "Usage: project [select|set|clear|show]" }
-  }
-
   if (lower[0] === "auth" && lower[1] === "connect") {
     if (tokens.length < 3 || tokens.length > 4) {
       return { type: "invalid", message: "Usage: auth connect <provider> [method]" }
@@ -249,10 +203,6 @@ export function commandHelpText(): string {
     "- models [provider]",
     "- use provider <provider>",
     "- use model <model>",
-    "- project select (interactive repo/branch picker)",
-    "- project set <repo> [branch]",
-    "- project clear",
-    "- project show",
     "- auth connect <provider> [method]",
     "- auth set-key <provider>",
     "- auth disconnect <provider>",

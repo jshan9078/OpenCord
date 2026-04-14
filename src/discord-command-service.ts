@@ -1,6 +1,6 @@
 /**
  * Executes parsed commands against channel state, providers, and credentials.
- * Handles /providers, /models, /use-provider, /use-model, /project, /auth, etc.
+ * Handles /providers, /models, /use-provider, /use-model, /opencode, /auth, etc.
  */
 import { commandHelpText, parseDiscordCommand } from "./command-parser.js"
 import type { ChannelStateStore } from "./channel-state-store.js"
@@ -87,22 +87,6 @@ function formatModels(registry: ProviderRegistry, providerId: string): string {
     models.map((model) => `- ${model.id}${model.label ? ` (${model.label})` : ""}`),
     `No models found for provider '${providerId}'.`,
   )
-}
-
-function extractRepoName(url: string): string {
-  const patterns = [
-    /github\.com[/:]([^\/]+)\/([^\/]+?)(?:\.git)?$/,
-    /^([^\/]+)\/([^\/]+)$/,
-  ]
-
-  for (const pattern of patterns) {
-    const match = url.match(pattern)
-    if (match) {
-      const name = match[2]
-      return name.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
-    }
-  }
-  return "Project"
 }
 
 export function handleDiscordCommand(
@@ -227,49 +211,6 @@ export function handleDiscordCommand(
       handled: true,
       isPrompt: false,
       message: `Active model set to '${parsed.modelId}'.`,
-    }
-  }
-
-  if (parsed.type === "project_select") {
-    return {
-      handled: true,
-      isPrompt: false,
-      message: "project_select:show_repo_menu",
-    }
-  }
-
-  if (parsed.type === "project_set") {
-    const projectName = extractRepoName(parsed.repo)
-    stateStore.setProject(context.channelId, parsed.repo, parsed.branch || "main", projectName)
-    return {
-      handled: true,
-      isPrompt: false,
-      message: `Project set to **${projectName}** (${parsed.repo}, branch: ${parsed.branch || "main"})`,
-    }
-  }
-
-  if (parsed.type === "project_clear") {
-    stateStore.clearProject(context.channelId)
-    return {
-      handled: true,
-      isPrompt: false,
-      message: "Project cleared for this channel.",
-    }
-  }
-
-  if (parsed.type === "project_show") {
-    const state = stateStore.get(context.channelId)
-    if (!state.repoUrl) {
-      return {
-        handled: true,
-        isPrompt: false,
-        message: "No project set for this channel. Run: project select or project set <repo> [branch]",
-      }
-    }
-    return {
-      handled: true,
-      isPrompt: false,
-      message: `Current project: **${state.projectName || "Project"}**\n${state.repoUrl}\nBranch: ${state.branch || "main"}`,
     }
   }
 

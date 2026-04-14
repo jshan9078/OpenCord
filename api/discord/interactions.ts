@@ -1468,6 +1468,62 @@ async function handleOpencodePicker(interaction: Interaction): Promise<Response>
   })
 }
 
+async function processOpencodeCommandInteraction(interaction: Interaction, projectInput?: string): Promise<void> {
+  try {
+    const response = await handleOpencodeCommand(interaction, projectInput)
+    const raw = await response.text()
+    let content = "OpenCode session started."
+    let components: unknown[] | undefined
+
+    try {
+      const parsed = JSON.parse(raw) as { data?: { content?: string; components?: unknown[] } }
+      if (parsed.data?.content) {
+        content = parsed.data.content
+      }
+      if (Array.isArray(parsed.data?.components)) {
+        components = parsed.data.components
+      }
+    } catch {
+      if (raw) {
+        content = raw
+      }
+    }
+
+    await sendFollowup(interaction.application_id, interaction.token, content, components)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error"
+    await sendFollowup(interaction.application_id, interaction.token, `Failed to start opencode session: ${message}`)
+  }
+}
+
+async function processOpencodePickerInteraction(interaction: Interaction): Promise<void> {
+  try {
+    const response = await handleOpencodePicker(interaction)
+    const raw = await response.text()
+    let content = "Selection processed."
+    let components: unknown[] | undefined
+
+    try {
+      const parsed = JSON.parse(raw) as { data?: { content?: string; components?: unknown[] } }
+      if (parsed.data?.content) {
+        content = parsed.data.content
+      }
+      if (Array.isArray(parsed.data?.components)) {
+        components = parsed.data.components
+      }
+    } catch {
+      if (raw) {
+        content = raw
+      }
+    }
+
+    await sendFollowup(interaction.application_id, interaction.token, content, components)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error"
+    await sendFollowup(interaction.application_id, interaction.token, `Failed to process selection: ${message}`)
+  }
+}
+
 async function refreshRawBaselineSnapshot(): Promise<string> {
   const [{ getSandboxManager }, { WorkspaceEntryStore }] = await Promise.all([
     import("../../src/sandbox-manager.js"),
@@ -1543,6 +1599,55 @@ async function processUpdateInteraction(interaction: Interaction): Promise<void>
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error"
     await sendFollowup(interaction.application_id, interaction.token, `Update failed: ${message}`)
+  }
+}
+
+async function processCheckpointInteraction(interaction: Interaction, channelId: string, inThread: boolean): Promise<void> {
+  try {
+    if (!inThread) {
+      await sendFollowup(interaction.application_id, interaction.token, "Run /checkpoint inside a thread.")
+      return
+    }
+
+    const [{ ThreadRuntimeStore }, { WorkspaceEntryStore }] = await Promise.all([
+      import("../../src/thread-runtime-store.js"),
+      import("../../src/workspace-entry-store.js"),
+    ])
+    const runtimeStore = new ThreadRuntimeStore()
+    const workspaceStore = new WorkspaceEntryStore()
+    const runtime = await runtimeStore.get(channelId)
+    if (!runtime.sandboxId) {
+      await sendFollowup(interaction.application_id, interaction.token, "No active sandbox in this thread. Run /opencode in a channel first.")
+      return
+    }
+
+    const sandbox = await Sandbox.get({ sandboxId: runtime.sandboxId }).catch(() => null)
+    if (!sandbox) {
+      await sendFollowup(interaction.application_id, interaction.token, "Sandbox is no longer available.")
+      return
+    }
+
+    const snapshot = await sandbox.snapshot().catch(() => null)
+    if (!snapshot) {
+      await sendFollowup(interaction.application_id, interaction.token, "Failed to create checkpoint snapshot.")
+      return
+    }
+
+    const binding = await workspaceStore.getThreadBinding(channelId)
+    if (binding?.project && binding.workspaceEntryId) {
+      await workspaceStore.updateEntry(binding.userId, binding.project, binding.workspaceEntryId, {
+        snapshotId: snapshot.snapshotId,
+      })
+    }
+
+    await sendFollowup(
+      interaction.application_id,
+      interaction.token,
+      `Checkpoint created: ${snapshot.snapshotId}\nThis thread can now be resumed from this saved state.`,
+    )
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error"
+    await sendFollowup(interaction.application_id, interaction.token, `Checkpoint failed: ${message}`)
   }
 }
 
@@ -2200,12 +2305,15 @@ export default async function handler(
         await sendNodeResponse(res, await handlePageButtonInteraction(interaction))
         return
       }
-      if (interaction.data?.custom_id?.startsWith("project:")) {
-        await sendNodeResponse(res, await handleProjectSelectMenu(interaction))
-        return
-      }
       if (interaction.data?.custom_id?.startsWith("opencode:")) {
-        await sendNodeResponse(res, await handleOpencodePicker(interaction))
+        waitUntil(processOpencodePickerInteraction(interaction))
+        await sendNodeResponse(res, json({
+          type: 7,
+          data: {
+            content: "Processing selection...",
+            components: [],
+          },
+        }))
         return
       }
       await sendNodeResponse(res, json({ type: 4, data: { content: "Unknown interaction." } }))
@@ -2242,12 +2350,8 @@ export default async function handler(
     }
 
     if (parsed.type === "opencode") {
-      await sendNodeResponse(res, await handleOpencodeCommand(interaction, parsed.project))
-      return
-    }
-
-    if (mapped.text === "project" || mapped.text === "project show" || mapped.text === "project select") {
-      await sendNodeResponse(res, await handleProjectCommand(interaction))
+      waitUntil(processOpencodeCommandInteraction(interaction, parsed.project))
+      await sendNodeResponse(res, json({ type: 5 }))
       return
     }
 
@@ -2449,92 +2553,8 @@ export default async function handler(
     )
 
     if (commandResult.message === "checkpoint:sandbox") {
-      if (!inThread) {
-        await sendChunkedInteractionResponse(interaction, res, "Run /checkpoint inside a thread.")
-        return
-      }
-
-      const [{ ThreadRuntimeStore }, { WorkspaceEntryStore }] = await Promise.all([
-        import("../../src/thread-runtime-store.js"),
-        import("../../src/workspace-entry-store.js"),
-      ])
-      const runtimeStore = new ThreadRuntimeStore()
-      const workspaceStore = new WorkspaceEntryStore()
-      const runtime = await runtimeStore.get(currentChannelId)
-      if (!runtime.sandboxId) {
-        await sendChunkedInteractionResponse(interaction, res, "No active sandbox in this thread. Run /opencode in a channel first.")
-        return
-      }
-
-      const sandbox = await Sandbox.get({ sandboxId: runtime.sandboxId }).catch(() => null)
-      if (!sandbox) {
-        await sendChunkedInteractionResponse(interaction, res, "Sandbox is no longer available.")
-        return
-      }
-
-      const snapshot = await sandbox.snapshot().catch(() => null)
-      if (!snapshot) {
-        await sendChunkedInteractionResponse(interaction, res, "Failed to create checkpoint snapshot.")
-        return
-      }
-
-      const binding = await workspaceStore.getThreadBinding(currentChannelId)
-      if (binding?.project && binding.workspaceEntryId) {
-        await workspaceStore.updateEntry(binding.userId, binding.project, binding.workspaceEntryId, {
-          snapshotId: snapshot.snapshotId,
-        })
-      }
-
-      await sendChunkedInteractionResponse(interaction, res, `Checkpoint created: ${snapshot.snapshotId}\nThis thread can now be resumed from this saved state.`)
-      return
-    }
-
-    if (commandResult.message === "project_select:show_repo_menu") {
-      const [{ getGitHubClient }] = await Promise.all([
-        import("../../src/github-client.js"),
-      ])
-      const gh = getGitHubClient()
-      if (!gh) {
-        await sendChunkedInteractionResponse(
-          interaction,
-          res,
-          "GitHub is not configured. Set GITHUB_TOKEN to use project selection.",
-        )
-        return
-      }
-      const repos = await gh.listRepos()
-      if (repos.length === 0) {
-        await sendChunkedInteractionResponse(
-          interaction,
-          res,
-          "No repositories found for your account.",
-        )
-        return
-      }
-      const repoOptions = repos.map((r) => ({
-        label: r.name,
-        value: `${r.fullName.split("/")[0]}:${r.name}`,
-        description: r.defaultBranch,
-      }))
-      await sendNodeResponse(res, json({
-        type: 4,
-        data: {
-          content: "Select a repository:",
-          components: [
-            {
-              type: 1,
-              components: [
-                {
-                  type: 3,
-                  custom_id: `project:repo:${currentChannelId}`,
-                  placeholder: "Select a repo",
-                  options: repoOptions.slice(0, 25),
-                },
-              ],
-            },
-          ],
-        },
-      }))
+      waitUntil(processCheckpointInteraction(interaction, currentChannelId, inThread))
+      await sendNodeResponse(res, json({ type: 5 }))
       return
     }
 
