@@ -45,15 +45,30 @@ function createSseStream(
 
       const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
       let buffer = ""
+      const isAbortError = (error: unknown): boolean => {
+        return (error instanceof Error && (error.name === "AbortError" || error.message === "This operation was aborted"))
+          || (typeof DOMException !== "undefined" && error instanceof DOMException && error.name === "AbortError")
+      }
 
       try {
         while (true) {
-          const { done, value } = await reader.read()
+          let done = false
+          let value: string | undefined
+          try {
+            const next = await reader.read()
+            done = next.done
+            value = next.value
+          } catch (error) {
+            if (signal?.aborted && isAbortError(error)) {
+              break
+            }
+            throw error
+          }
           if (done) {
             break
           }
 
-          buffer += value
+          buffer += value ?? ""
           const chunks = buffer.split("\n\n")
           buffer = chunks.pop() ?? ""
 
@@ -73,6 +88,11 @@ function createSseStream(
           }
         }
       } finally {
+        try {
+          await reader.cancel()
+        } catch {
+          // Ignore cancellation errors during normal shutdown.
+        }
         reader.releaseLock()
       }
     },

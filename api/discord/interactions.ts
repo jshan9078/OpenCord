@@ -565,6 +565,8 @@ function stripPromptEcho(text: string, prompt: string): string {
 function stripInjectedPromptScaffolding(text: string, prompt: string, runtimeContext?: string): string {
   let next = text.trimStart()
 
+  next = next.replace(/^context recovery note:[\s\S]*?current user request:\s*/i, "")
+
   const removePrefix = (prefix: string): void => {
     const normalized = prefix.trim()
     if (!normalized) {
@@ -2006,7 +2008,7 @@ async function executeQueuedAskRun(run: AskQueueRunRequest): Promise<void> {
 
     const hadExistingSession = Boolean(await threadRuntimeStore.getSession(conversationId))
 
-    const recoveryContext = (isNewSandbox || !hadExistingSession)
+    const recoveryContext = isNewSandbox
       ? await getRecoveryContext(stateStore, conversationId, prompt)
       : undefined
 
