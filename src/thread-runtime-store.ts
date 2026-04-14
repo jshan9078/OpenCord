@@ -131,8 +131,20 @@ export class ThreadRuntimeStore {
     return next
   }
 
-  async setSandbox(threadId: string, sandboxId: string, opencodePassword: string): Promise<void> {
-    await this.patch(threadId, { sandboxId, opencodePassword })
+  async setSandbox(
+    threadId: string,
+    sandboxId: string,
+    opencodePassword: string,
+    options?: { clearSession?: boolean },
+  ): Promise<void> {
+    const next: Partial<ThreadRuntimeState> = {
+      sandboxId,
+      opencodePassword,
+    }
+    if (options?.clearSession) {
+      next.sessionId = undefined
+    }
+    await this.patch(threadId, next)
   }
 
   async clear(threadId: string): Promise<void> {

@@ -1226,10 +1226,9 @@ async function startThreadSession(
     )
     : await sandboxManager.getOrCreate(threadId, undefined, repoUrl, branch)
 
-  await runtimeStore.setSandbox(threadId, context.sandboxId, context.opencodePassword)
-  if (options?.resetSessions !== false) {
-    await runtimeStore.clearSession(threadId)
-  }
+  await runtimeStore.setSandbox(threadId, context.sandboxId, context.opencodePassword, {
+    clearSession: options?.resetSessions !== false,
+  })
 
   const threadState = channelStateStore.get(threadId)
   if (repoUrl) {
