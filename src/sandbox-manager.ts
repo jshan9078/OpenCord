@@ -186,18 +186,13 @@ export class SandboxManager {
       ports: [OPENCODE_PORT],
     }
 
-    if (repoUrl) {
-      createOptions.source = {
-        type: "git",
-        url: repoUrl,
-        depth: 1,
-        revision: branch !== "main" ? branch : undefined,
-      }
-    }
-
     console.log(`[SandboxManager] Creating sandbox: ${name}`)
     const sandbox = await Sandbox.create(createOptions)
     console.log(`[SandboxManager] Sandbox created: ${sandbox.sandboxId}`)
+
+    if (repoUrl) {
+      await this.cloneRepoIntoSandbox(sandbox, repoUrl, branch)
+    }
 
     return sandbox
   }
@@ -248,11 +243,11 @@ export class SandboxManager {
   }
 
   private async cloneRepoIntoSandbox(sandbox: Sandbox, repoUrl: string, branch = "main"): Promise<void> {
-    const repoName = this.extractRepoName(repoUrl)
-    const target = `/workspace/${repoName}`
+    const target = "/vercel/sandbox"
 
     const checkout = [
-      `rm -rf ${shellEscape(target)}`,
+      `mkdir -p ${shellEscape(target)}`,
+      `find ${shellEscape(target)} -mindepth 1 -maxdepth 1 -exec rm -rf {} +`,
       `git clone --depth=1 --branch ${shellEscape(branch)} ${shellEscape(repoUrl)} ${shellEscape(target)}`,
     ].join(" && ")
 

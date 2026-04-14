@@ -48,6 +48,7 @@ export async function executePromptForChannel(
     recoveryContext?: string
     providerAuth?: Record<string, unknown>
     runtimeContext?: string
+    cwd?: string
   } = {},
 ): Promise<
   | {
@@ -124,14 +125,14 @@ export async function executePromptForChannel(
   if (options.forceNewSession) {
     logPromptStage("session_create_start", { threadId, providerId, modelId })
     const created = await client.session.create({
-      body: { title: `discord-${threadId}` },
+      body: { title: `discord-${threadId}`, cwd: options.cwd },
     })
     sessionId = created.id
     await runtimeStore.setSession(threadId, sessionId)
     logPromptStage("session_create_done", { threadId, sessionId })
   } else {
     logPromptStage("session_resolve_start", { threadId, providerId, modelId })
-    sessionId = await resolveThreadSession(client, runtimeStore, threadId)
+    sessionId = await resolveThreadSession(client, runtimeStore, threadId, options.cwd)
     logPromptStage("session_resolve_done", { threadId, sessionId })
   }
 

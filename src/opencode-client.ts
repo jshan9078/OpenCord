@@ -144,7 +144,7 @@ export interface OpencodeClient {
     }
   }
   session: {
-    create(input: { body: { title: string } }): Promise<{ id: string }>
+    create(input: { body: { title: string; cwd?: string } }): Promise<{ id: string }>
     get(input: { path: { id: string } }): Promise<unknown>
     messages(input: { path: { id: string } }): Promise<Array<{ info?: Record<string, unknown>; parts?: unknown[] }>>
     promptAsync(input: {

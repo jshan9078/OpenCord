@@ -67,6 +67,10 @@ function logAskStage(stage: string, details: Record<string, unknown>): void {
   console.info("ask.stage", { stage, ...details })
 }
 
+function repoUrlToWorkspaceCwd(repoUrl: string | undefined): string | undefined {
+  return repoUrl ? "/vercel/sandbox" : undefined
+}
+
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
@@ -1851,13 +1855,18 @@ async function executeQueuedAskRun(run: AskQueueRunRequest): Promise<void> {
   })
 
   if (!threadBinding && threadRuntimeState.sandboxId) {
-    // Legacy migration: thread has runtime state but no binding record.
+    logAskStage("execute_binding_missing", {
+      threadId: conversationId,
+      interactionId: run.interactionId,
+      hasSandboxId: true,
+    })
+    // Do not overwrite the durable binding with an empty fallback.
+    // A transient stale read would permanently erase project metadata.
     threadBinding = {
       threadId: conversationId,
       userId,
       updatedAt: Date.now(),
     }
-    await workspaceStore.setThreadBinding(threadBinding)
   }
 
   if (threadBinding && threadBinding.userId !== userId) {
@@ -1997,10 +2006,21 @@ async function executeQueuedAskRun(run: AskQueueRunRequest): Promise<void> {
         branch = entry.branch || "main"
       }
     }
+    if (!repoUrl && threadBinding?.project) {
+      try {
+        const parsedBindingProject = parseProjectInput(threadBinding.project)
+        repoUrl = parsedBindingProject.repoUrl
+        branch = parsedBindingProject.branch || branch
+      } catch {
+        // Ignore malformed historical binding values.
+      }
+    }
     if (!repoUrl && (conversationState.repoUrl || channelState.repoUrl)) {
       repoUrl = conversationState.repoUrl || channelState.repoUrl
       branch = conversationState.branch || channelState.branch || "main"
     }
+
+    const sessionCwd = repoUrlToWorkspaceCwd(repoUrl)
 
     const sandboxManager = getSandboxManager()
     let sandboxContext: SandboxContext
@@ -2048,6 +2068,8 @@ async function executeQueuedAskRun(run: AskQueueRunRequest): Promise<void> {
       providerId: selection.providerId,
       modelId: selection.modelId,
       sandboxId: sandboxContext.sandboxId,
+      cwd: sessionCwd,
+      repoUrl,
     })
 
     try {
@@ -2329,6 +2351,7 @@ async function executeQueuedAskRun(run: AskQueueRunRequest): Promise<void> {
         recoveryContext: recoveryContext || undefined,
         providerAuth,
         runtimeContext,
+        cwd: sessionCwd,
       },
     )
 

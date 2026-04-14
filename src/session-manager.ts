@@ -8,6 +8,7 @@ export async function resolveThreadSession(
   client: RuntimeClientAdapter,
   runtimeStore: ThreadRuntimeStore,
   threadId: string,
+  cwd?: string,
 ): Promise<string> {
   const existing = await runtimeStore.getSession(threadId)
   if (existing) {
@@ -20,7 +21,7 @@ export async function resolveThreadSession(
   }
 
   const created = await client.session.create({
-    body: { title: `discord-${threadId}` },
+    body: { title: `discord-${threadId}`, cwd },
   })
   const sessionId = created.id
 
