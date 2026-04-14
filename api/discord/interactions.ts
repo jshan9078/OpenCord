@@ -1723,7 +1723,7 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
   let threadBinding = await workspaceStore.getThreadBinding(conversationId)
   const threadRuntimeStore = new ThreadRuntimeStore()
   lockStore = threadRuntimeStore
-  const threadRuntimeState = await threadRuntimeStore.get(conversationId)
+  let threadRuntimeState = await threadRuntimeStore.get(conversationId)
 
   if (!threadBinding && threadRuntimeState.sandboxId) {
     // Legacy migration: thread has runtime state but no binding record.
@@ -1759,6 +1759,27 @@ async function processAskInteraction(interaction: Interaction, prompt: string): 
       await workspaceStore.updateEntry(threadBinding.userId, threadBinding.project, threadBinding.workspaceEntryId, {
         threadId: conversationId,
       })
+    }
+  }
+
+  if (!threadRuntimeState.sandboxId) {
+    try {
+      if (threadBinding?.project && threadBinding.workspaceEntryId) {
+        const entry = await workspaceStore.getEntry(threadBinding.userId, threadBinding.project, threadBinding.workspaceEntryId)
+        if (entry) {
+          const resumed = await startThreadSession(conversationId, entry.repoUrl, entry.branch || "main", {
+            snapshotId: entry.snapshotId,
+            resetSessions: false,
+          })
+          threadRuntimeState = {
+            ...threadRuntimeState,
+            sandboxId: resumed.sandboxId,
+            opencodePassword: resumed.opencodePassword,
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Failed to auto-recover missing thread runtime:", error)
     }
   }
 
