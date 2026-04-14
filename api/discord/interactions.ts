@@ -1846,6 +1846,8 @@ async function executeQueuedAskRun(run: AskQueueRunRequest): Promise<void> {
     interactionId: run.interactionId,
     hasSandboxId: Boolean(threadRuntimeState.sandboxId),
     hasSessionId: Boolean(threadRuntimeState.sessionId),
+    bindingProject: threadBinding?.project,
+    bindingWorkspaceEntryId: threadBinding?.workspaceEntryId,
   })
 
   if (!threadBinding && threadRuntimeState.sandboxId) {
