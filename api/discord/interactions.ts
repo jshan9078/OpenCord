@@ -68,6 +68,10 @@ const DISCORD_AUTOCOMPLETE_LIMIT = 25
 const PROVIDERS_PER_PAGE = 12
 const MODELS_PER_PAGE = 20
 
+function logAskStage(stage: string, details: Record<string, unknown>): void {
+  console.info("ask.stage", { stage, ...details })
+}
+
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
@@ -171,6 +175,7 @@ function getRequestOrigin(req: { url?: string; headers: Record<string, string | 
 
 async function triggerThreadDrain(threadId: string, origin: string | undefined): Promise<void> {
   if (!origin) {
+    logAskStage("drain_trigger_skipped", { threadId, reason: "missing_origin" })
     return
   }
 
@@ -178,10 +183,12 @@ async function triggerThreadDrain(threadId: string, origin: string | undefined):
   const timestamp = Date.now().toString()
   const signature = signInternalDispatch(body, timestamp)
   if (!signature) {
+    logAskStage("drain_trigger_skipped", { threadId, reason: "missing_signature_secret" })
     return
   }
 
   try {
+    logAskStage("drain_trigger_start", { threadId, origin })
     await fetch(new URL("/api/discord/interactions", origin), {
       method: "POST",
       headers: {
@@ -191,7 +198,13 @@ async function triggerThreadDrain(threadId: string, origin: string | undefined):
       },
       body,
     })
+    logAskStage("drain_trigger_done", { threadId, origin })
   } catch (error) {
+    logAskStage("drain_trigger_error", {
+      threadId,
+      origin,
+      error: error instanceof Error ? error.message : String(error),
+    })
     console.error("triggerThreadDrain failed:", error)
   }
 }
@@ -1808,7 +1821,13 @@ async function processDeleteInteraction(interaction: Interaction, channelId: str
 }
 
 async function executeQueuedAskRun(run: AskQueueRunRequest): Promise<void> {
+  const startedAt = Date.now()
   try {
+  logAskStage("execute_start", {
+    threadId: run.channelId,
+    interactionId: run.interactionId,
+    promptLength: run.prompt.length,
+  })
   const [
     { ChannelStateStore },
     { CredentialStore },
@@ -1854,6 +1873,7 @@ async function executeQueuedAskRun(run: AskQueueRunRequest): Promise<void> {
 
   const effectiveThreadId = channelId
   await updateOriginalResponse(run.applicationId, run.token, "Working...")
+  logAskStage("execute_working", { threadId: channelId, interactionId: run.interactionId })
 
   const conversationId = effectiveThreadId
   const conversationState = stateStore.get(conversationId)
@@ -1864,6 +1884,12 @@ async function executeQueuedAskRun(run: AskQueueRunRequest): Promise<void> {
   let threadBinding = await workspaceStore.getThreadBinding(conversationId)
   const threadRuntimeStore = new ThreadRuntimeStore()
   let threadRuntimeState = await threadRuntimeStore.get(conversationId)
+  logAskStage("execute_runtime_loaded", {
+    threadId: conversationId,
+    interactionId: run.interactionId,
+    hasSandboxId: Boolean(threadRuntimeState.sandboxId),
+    hasSessionId: Boolean(threadRuntimeState.sessionId),
+  })
 
   if (!threadBinding && threadRuntimeState.sandboxId) {
     // Legacy migration: thread has runtime state but no binding record.
@@ -2029,7 +2055,17 @@ async function executeQueuedAskRun(run: AskQueueRunRequest): Promise<void> {
         branch,
         threadRuntimeState.opencodePassword,
       )
+      logAskStage("sandbox_ready", {
+        threadId: conversationId,
+        interactionId: run.interactionId,
+        sandboxId: sandboxContext.sandboxId,
+      })
     } catch (error) {
+      logAskStage("sandbox_error", {
+        threadId: conversationId,
+        interactionId: run.interactionId,
+        error: error instanceof Error ? error.message : String(error),
+      })
       console.error("Failed to get/create sandbox:", error)
       await sendFollowup(
         run.applicationId,
@@ -2047,12 +2083,25 @@ async function executeQueuedAskRun(run: AskQueueRunRequest): Promise<void> {
     const registry = await loadProviderRegistry()
     const providerAuth = await oauthStore.getUserProviderAuth(userId, selection.providerId)
     let runtimeContext: string | undefined
+    logAskStage("prompt_flow_start", {
+      threadId: conversationId,
+      interactionId: run.interactionId,
+      providerId: selection.providerId,
+      modelId: selection.modelId,
+      sandboxId: sandboxContext.sandboxId,
+    })
 
     try {
       const { getGitHubClient } = await import("../../src/github-client.js")
       const ghClient = getGitHubClient()
       if (ghClient) {
-        const githubLogin = await ghClient.getViewerLogin()
+        const githubLogin = await Promise.race<string | undefined>([
+          ghClient.getViewerLogin(),
+          new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 3_000)),
+        ])
+        if (!githubLogin) {
+          throw new Error("GitHub viewer lookup timed out")
+        }
         runtimeContext = [
           "Runtime GitHub context:",
           `- Authenticated GitHub login: ${githubLogin}`,
@@ -2322,9 +2371,23 @@ async function executeQueuedAskRun(run: AskQueueRunRequest): Promise<void> {
     )
 
     if (!result.ok) {
+      logAskStage("prompt_flow_failed", {
+        threadId: conversationId,
+        interactionId: run.interactionId,
+        message: result.message,
+        elapsedMs: Date.now() - startedAt,
+      })
       await sendFollowup(run.applicationId, run.token, result.message, undefined, threadIdForFollowups)
       return
     }
+    logAskStage("prompt_flow_done", {
+      threadId: conversationId,
+      interactionId: run.interactionId,
+      elapsedMs: Date.now() - startedAt,
+      hadError: Boolean(result.hadError),
+      filesEdited: result.filesEdited?.length || 0,
+      hasUsage: Boolean(result.usage),
+    })
 
     const usageFooter = formatUsageFooter(
       result.usage,
@@ -2387,7 +2450,18 @@ async function executeQueuedAskRun(run: AskQueueRunRequest): Promise<void> {
       run.token,
       commandIsInThread ? "Done." : `Response posted in <#${threadIdForFollowups || channelId}>.`,
     )
+    logAskStage("execute_done", {
+      threadId: conversationId,
+      interactionId: run.interactionId,
+      elapsedMs: Date.now() - startedAt,
+    })
   } catch (error) {
+    logAskStage("execute_error", {
+      threadId: run.channelId,
+      interactionId: run.interactionId,
+      elapsedMs: Date.now() - startedAt,
+      error: error instanceof Error ? error.message : String(error),
+    })
     console.error("executeQueuedAskRun failed:", error)
     const message = (error instanceof Error
       ? error.message
@@ -2435,6 +2509,11 @@ async function processAskInteraction(interaction: Interaction, prompt: string, o
     const queueStore = new ThreadAskQueueStore()
     const runtimeStore = new ThreadRuntimeStore()
     const runtimeState = await runtimeStore.get(channelId)
+    logAskStage("enqueue_start", {
+      threadId: channelId,
+      interactionId: interaction.id,
+      hasActiveLock: Boolean(runtimeState.runLock && runtimeState.runLock.expiresAt > Date.now()),
+    })
     const queueResult = await queueStore.enqueue({
       threadId: channelId,
       interactionId: interaction.id,
@@ -2453,9 +2532,24 @@ async function processAskInteraction(interaction: Interaction, prompt: string, o
         ? "Queued. Starting now..."
         : `Queued for this thread. ${runsAhead} run${runsAhead === 1 ? " is" : "s are"} ahead.`
 
+    logAskStage("enqueue_done", {
+      threadId: channelId,
+      interactionId: interaction.id,
+      queueRunId: queueResult.run.id,
+      duplicate: queueResult.duplicate,
+      aheadCount: queueResult.aheadCount,
+      activeAhead,
+      runsAhead,
+    })
+
     await updateOriginalResponse(interaction.application_id, interaction.token, statusMessage)
     await triggerThreadDrain(channelId, origin)
   } catch (error) {
+    logAskStage("enqueue_error", {
+      threadId: interaction.channel_id,
+      interactionId: interaction.id,
+      error: error instanceof Error ? error.message : String(error),
+    })
     console.error("processAskInteraction failed:", error)
     const message = error instanceof Error ? error.message : "Unknown error"
     await updateOriginalResponse(interaction.application_id, interaction.token, `Request failed: ${message}`)
@@ -2470,10 +2564,14 @@ async function drainThreadAskQueue(threadId: string, origin?: string): Promise<v
 
   const runtimeStore = new ThreadRuntimeStore()
   const queueStore = new ThreadAskQueueStore()
+  const drainStartedAt = Date.now()
+  logAskStage("drain_start", { threadId, origin })
   const lease = await runtimeStore.acquireRunLock(threadId, 60_000, `queue:${threadId}`)
   if (!lease.acquired || !lease.runId) {
+    logAskStage("drain_lease_refused", { threadId, origin })
     return
   }
+  logAskStage("drain_lease_acquired", { threadId, origin, leaseRunId: lease.runId })
 
   let heartbeat: ReturnType<typeof setInterval> | undefined
   try {
@@ -2484,8 +2582,18 @@ async function drainThreadAskQueue(threadId: string, origin?: string): Promise<v
     await runtimeStore.refreshRunLock(threadId, lease.runId, 60_000)
     const nextRun = await queueStore.peekNextRun(threadId)
     if (!nextRun) {
+      logAskStage("drain_queue_empty", { threadId, origin, leaseRunId: lease.runId })
       return
     }
+
+    logAskStage("drain_run_dequeued", {
+      threadId,
+      origin,
+      leaseRunId: lease.runId,
+      queueRunId: nextRun.id,
+      interactionId: nextRun.interactionId,
+      queuedMs: Date.now() - nextRun.createdAt,
+    })
 
     await executeQueuedAskRun({
       interactionId: nextRun.interactionId,
@@ -2496,17 +2604,37 @@ async function drainThreadAskQueue(threadId: string, origin?: string): Promise<v
       prompt: nextRun.prompt,
     })
     await queueStore.removeRun(nextRun)
+    logAskStage("drain_run_removed", {
+      threadId,
+      origin,
+      leaseRunId: lease.runId,
+      queueRunId: nextRun.id,
+      elapsedMs: Date.now() - drainStartedAt,
+    })
   } finally {
     if (heartbeat) {
       clearInterval(heartbeat)
     }
     await runtimeStore.releaseRunLock(threadId, lease.runId)
+    logAskStage("drain_lease_released", {
+      threadId,
+      origin,
+      leaseRunId: lease.runId,
+      elapsedMs: Date.now() - drainStartedAt,
+    })
   }
 
   const remainingRun = await queueStore.peekNextRun(threadId)
   if (remainingRun) {
+    logAskStage("drain_more_work", {
+      threadId,
+      origin,
+      nextQueueRunId: remainingRun.id,
+    })
     await triggerThreadDrain(threadId, origin)
+    return
   }
+  logAskStage("drain_done", { threadId, origin, elapsedMs: Date.now() - drainStartedAt })
 }
 
 export default async function handler(

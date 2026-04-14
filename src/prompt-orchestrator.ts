@@ -12,6 +12,25 @@ import type { ThreadRuntimeStore } from "./thread-runtime-store.js"
 
 export type RuntimeClientAdapter = Pick<OpencodeClient, "auth" | "provider" | "session" | "event">
 
+function logPromptStage(stage: string, details: Record<string, unknown>): void {
+  console.info("prompt.stage", { stage, ...details })
+}
+
+async function withTimeout<T>(work: Promise<T>, ms: number, label: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+  })
+
+  try {
+    return await Promise.race([work, timeout])
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId)
+    }
+  }
+}
+
 export async function executePromptForChannel(
   client: OpencodeClient,
   registry: ProviderRegistry,
@@ -55,10 +74,15 @@ export async function executePromptForChannel(
   | { ok: false; message: string }
 > {
   const { providerId, modelId } = selection
+  const startedAt = Date.now()
+  logPromptStage("start", { threadId, providerId, modelId, forceNewSession: Boolean(options.forceNewSession) })
 
   try {
-    await syncProviderRegistry(client, registry)
+    logPromptStage("provider_sync_start", { threadId, providerId, modelId })
+    await withTimeout(syncProviderRegistry(client, registry), 5_000, "provider registry sync")
+    logPromptStage("provider_sync_done", { threadId, providerId, modelId })
   } catch {
+    logPromptStage("provider_sync_skipped", { threadId, providerId, modelId })
     // Do not block prompt execution if provider registry sync fails.
     // Selection validation is already done upstream.
   }
@@ -66,15 +90,20 @@ export async function executePromptForChannel(
   let authPrimed = false
   if (options.providerAuth) {
     try {
+      logPromptStage("auth_set_start", { threadId, providerId })
       await client.auth.set({ path: { id: providerId }, body: options.providerAuth })
       authPrimed = true
+      logPromptStage("auth_set_done", { threadId, providerId })
     } catch {
+      logPromptStage("auth_set_failed", { threadId, providerId })
       // Fall through to normal auth bootstrap path
     }
   }
 
   if (!authPrimed) {
+    logPromptStage("auth_bootstrap_start", { threadId, providerId })
     const authResult = await ensureProviderAuth(client, registry, credentials, providerId)
+    logPromptStage("auth_bootstrap_done", { threadId, providerId, result: authResult.type })
     if (authResult.type === "needs_local_oauth") {
       return {
         ok: false,
@@ -93,15 +122,20 @@ export async function executePromptForChannel(
 
   let sessionId: string
   if (options.forceNewSession) {
+    logPromptStage("session_create_start", { threadId, providerId, modelId })
     const created = await client.session.create({
       body: { title: `discord-${threadId}` },
     })
     sessionId = created.id
     await runtimeStore.setSession(threadId, sessionId)
+    logPromptStage("session_create_done", { threadId, sessionId })
   } else {
+    logPromptStage("session_resolve_start", { threadId, providerId, modelId })
     sessionId = await resolveThreadSession(client, runtimeStore, threadId)
+    logPromptStage("session_resolve_done", { threadId, sessionId })
   }
 
+  logPromptStage("relay_subscribe_start", { threadId, sessionId })
   const relayPromise = relaySessionEvents(client, sink, sessionId, {
     maxIdleMs: 45_000,
     maxTotalMs: 10 * 60_000,
@@ -120,6 +154,7 @@ export async function executePromptForChannel(
       ? [options.runtimeContext, "", prompt].join("\n")
       : prompt
 
+  logPromptStage("prompt_async_start", { threadId, sessionId, providerId, modelId })
   await client.session.promptAsync({
     path: { id: sessionId },
     body: {
@@ -130,7 +165,16 @@ export async function executePromptForChannel(
       parts: [{ type: "text", text: finalPrompt }],
     },
   })
+  logPromptStage("prompt_async_done", { threadId, sessionId })
   const relayResult = await relayPromise
+  logPromptStage("relay_done", {
+    threadId,
+    sessionId,
+    completed: relayResult.completed,
+    timedOut: relayResult.timedOut,
+    reason: relayResult.reason,
+    elapsedMs: Date.now() - startedAt,
+  })
 
   if (!relayResult.completed && relayResult.timedOut) {
     return {
