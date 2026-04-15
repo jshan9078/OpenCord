@@ -25,3 +25,15 @@ When working on this codebase, refer to the architecture documentation:
 - **Thread-per-session**: Each Discord thread gets its own Vercel Sandbox
 - **Blob storage for durability**: State persists even when sandboxes are stopped
 - **Snapshot-based resumption**: Checkpoints saved as Vercel Snapshots
+
+## Documentation Policy
+
+**After making any code changes, you must update the relevant documentation in `docs/`.**
+
+- If you modify thread creation or the `/opencode` command flow → update `docs/thread-creation.md`
+- If you modify sandbox creation or git cloning → update `docs/sandbox-clone.md`
+- If you modify Discord message sending → update `docs/messaging.md`
+- If you modify state stores or blob storage → update `docs/state-stores.md`
+- If you add significant new functionality → consider updating `docs/OVERVIEW.md`
+
+Documentation changes should be committed alongside the code changes that necessitate them.
