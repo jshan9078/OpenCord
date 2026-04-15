@@ -1295,7 +1295,7 @@ async function startThreadSession(
   }
 }
 
-async function handleOpencodeCommand(interaction: Interaction, projectInput?: string): Promise<Response> {
+async function handleOpencodeCommand(interaction: Interaction, projectInput?: string, prompt?: string): Promise<Response> {
   const channelId = interaction.channel_id
   const userId = getInteractionUserId(interaction)
   if (!channelId || !userId) {
@@ -1335,12 +1335,25 @@ async function handleOpencodeCommand(interaction: Interaction, projectInput?: st
       updatedAt: Date.now(),
     })
 
-    await sendFollowup(interaction.application_id, interaction.token, `<@${userId}> Your sandbox is ready! Use /ask in this thread to begin.`, undefined, threadId)
+    if (prompt) {
+      await executeQueuedAskRun({
+        interactionId: interaction.id,
+        applicationId: interaction.application_id,
+        token: interaction.token,
+        channelId: threadId,
+        userId,
+        prompt,
+      })
+    } else {
+      await sendFollowup(interaction.application_id, interaction.token, `<@${userId}> Your sandbox is ready! Use /ask in this thread to begin.`, undefined, threadId)
+    }
 
     return json({
       type: 4,
       data: {
-        content: `Starting empty sandbox in <#${threadId}>. Use /ask in that thread to begin.`,
+        content: prompt
+          ? `Starting sandbox and processing your prompt in <#${threadId}>...`
+          : `Starting empty sandbox in <#${threadId}>. Use /ask in that thread to begin.`,
       },
     })
   }
@@ -1373,19 +1386,32 @@ async function handleOpencodeCommand(interaction: Interaction, projectInput?: st
     updatedAt: Date.now(),
   })
 
-  await sendFollowup(interaction.application_id, interaction.token, `<@${userId}> Your sandbox is ready with the repository cloned! Use /ask in this thread to begin.`, undefined, threadId)
+  if (prompt) {
+    await executeQueuedAskRun({
+      interactionId: interaction.id,
+      applicationId: interaction.application_id,
+      token: interaction.token,
+      channelId: threadId,
+      userId,
+      prompt,
+    })
+  } else {
+    await sendFollowup(interaction.application_id, interaction.token, `<@${userId}> Your sandbox is ready with the repository cloned! Use /ask in this thread to begin.`, undefined, threadId)
+  }
 
   return json({
     type: 4,
     data: {
-      content: `Started a new session in <#${threadId}>.`,
+      content: prompt
+        ? `Started session and processing your prompt in <#${threadId}>...`
+        : `Started a new session in <#${threadId}>.`,
     },
   })
 }
 
-async function processOpencodeCommandInteraction(interaction: Interaction, projectInput?: string): Promise<void> {
+async function processOpencodeCommandInteraction(interaction: Interaction, projectInput?: string, prompt?: string): Promise<void> {
   try {
-    const response = await handleOpencodeCommand(interaction, projectInput)
+    const response = await handleOpencodeCommand(interaction, projectInput, prompt)
     const raw = await response.text()
     let content = "OpenCode session started."
     let components: unknown[] | undefined
@@ -2421,7 +2447,7 @@ export default async function handler(
     }
 
     if (parsed.type === "opencode") {
-      waitUntil(processOpencodeCommandInteraction(interaction, parsed.project))
+      waitUntil(processOpencodeCommandInteraction(interaction, parsed.project, parsed.prompt))
       await sendNodeResponse(res, json({ type: 5 }))
       return
     }

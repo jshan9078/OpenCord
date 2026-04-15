@@ -45,6 +45,12 @@ export function buildApplicationCommands(): DiscordApplicationCommand[] {
           required: true,
           autocomplete: true,
         },
+        {
+          type: 3,
+          name: "prompt",
+          description: "Optional initial prompt to start the session",
+          required: false,
+        },
       ],
     },
     {

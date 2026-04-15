@@ -69,6 +69,10 @@ export function mapInteractionCommandToText(
     }
     case "opencode": {
       const project = optionValue(data, "project")
+      const prompt = optionValue(data, "prompt")
+      if (project && prompt) {
+        return { type: "command", text: `opencode ${project} ${prompt}` }
+      }
       return { type: "command", text: project ? `opencode ${project}` : "opencode" }
     }
     case "checkpoint": {

@@ -188,7 +188,9 @@ export function parseDiscordCommand(input: string): ParsedCommand {
     if (tokens.length === 2) {
       return { type: "opencode", project: tokens[1] }
     }
-    return { type: "invalid", message: "Usage: opencode [project]" }
+    const project = tokens[1]
+    const prompt = tokens.slice(2).join(" ")
+    return { type: "opencode", project, prompt }
   }
 
   if (lower[0] === "help") {
