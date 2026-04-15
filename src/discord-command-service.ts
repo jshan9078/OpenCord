@@ -225,7 +225,10 @@ export function handleDiscordCommand(
   }
 
   if (parsed.type === "auth_set_key") {
-    const envVarName = `${parsed.providerId.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_API_KEY`
+    let envVarName = `${parsed.providerId.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_API_KEY`
+    if (parsed.providerId === "opencode-go") {
+      envVarName = "OPENCODE_API_KEY"
+    }
     return {
       handled: true,
       isPrompt: false,

@@ -90,6 +90,7 @@ These values live in Vercel and are used by the deployed app:
 **Provider API keys** (optional):
 - `OPENAI_API_KEY`
 - `ANTHROPIC_API_KEY`
+- `OPENCODE_API_KEY` (for opencode-go provider)
 - etc.
 
 **User config** (optional - your personal OpenCode settings like skills, agents, templates):
