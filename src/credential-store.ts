@@ -124,7 +124,7 @@ export class CredentialStore {
     // First check env var for API key
     const envApiKey = process.env[`${providerId.toUpperCase()}_API_KEY`]
     if (envApiKey) {
-      return { type: "api-key", api_key: envApiKey }
+      return { type: "apiKey", apiKey: envApiKey }
     }
 
     // Fall back to stored credentials

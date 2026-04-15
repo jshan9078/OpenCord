@@ -131,8 +131,8 @@ async function main(): Promise<void> {
     }
 
     store.setProviderAuth(subcommand, {
-      type: "api-key",
-      key: value,
+      type: "apiKey",
+      apiKey: value,
     })
     console.log(`Stored API key for provider '${subcommand}'.`)
     return
