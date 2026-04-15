@@ -24,19 +24,23 @@ Send a coding request to the agent.
 
 ### /opencode
 
-Start a new OpenCode session, optionally with a GitHub project.
+Start a new OpenCode session, optionally with a GitHub project and initial prompt.
 
 ```
-/opencode                      # Start empty session
-/opencode owner/repo           # Start with GitHub repo (e.g., anthropic/claude-code)
+/opencode                              # Start empty session
+/opencode owner/repo                    # Start with GitHub repo (e.g., anthropic/claude-code)
+/opencode Fix the login bug            # Start empty session and immediately process prompt
+/opencode owner/repo Add new feature   # Start with repo and immediately process prompt
 ```
 
 **Options:**
-- `project` (optional): GitHub repo in `owner/repo` format, with autocomplete
+- `project` (required): GitHub repo in `owner/repo` format, with autocomplete
+- `prompt` (optional): Initial coding task to start the session immediately
 
 **Behavior:**
 - Creates or resumes a thread-bound session for this Discord channel
 - If project is provided, clones the repo into the sandbox
+- If prompt is provided, immediately processes it via `executeQueuedAskRun()`
 - Thread session persists across prompts until `/delete`
 
 ### /providers

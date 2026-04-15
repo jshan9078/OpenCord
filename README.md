@@ -186,17 +186,24 @@ On each `/ask`, the bridge sends the resolved provider/model selection directly 
 
 In a normal channel (not a thread), start a session:
 
-```text
+```
 /opencode
 ```
 
 Or start/resume project mode:
 
-```text
+```
 /opencode owner/repo
 ```
 
-Then use `/ask` inside the created/linked thread.
+You can also attach a prompt directly to skip the `/ask` step:
+
+```
+/opencode Fix the login bug in auth.js
+/opencode owner/repo Add a new API endpoint for users
+```
+
+Then use `/ask` inside the created/linked thread if you didn't provide a prompt.
 
 Rules:
 - `/ask` works only in threads
@@ -222,7 +229,7 @@ ANTHROPIC_API_KEY=sk-ant-... # Anthropic
 
 | Command | Description |
 |---------|-------------|
-| `/opencode [project]` | Start empty session or pick resume/new for a project |
+| `/opencode [project] [prompt]` | Start empty session or pick resume/new for a project. Optional prompt immediately starts the session. |
 | `/ask <prompt>` | Send a coding request (thread only) |
 | `/checkpoint` | Snapshot current thread session for resume |
 | `/delete` | Stop and remove current thread session (no checkpoint) |

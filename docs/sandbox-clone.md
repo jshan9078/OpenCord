@@ -23,5 +23,7 @@ Located in `src/sandbox-manager.ts`.
 1. Installs OpenCode if needed
 2. Injects user config from Blob storage
 3. Injects API keys from env vars
-4. Starts OpenCode server on port 4096
-5. Waits for server health check
+4. Configures GitHub credentials via `GIT_ASKPASS` for clone/fetch operations
+5. Configures `git config user.name` and `git config user.email` from GitHub user info (for commit authorship)
+6. Starts OpenCode server on port 4096
+7. Waits for server health check

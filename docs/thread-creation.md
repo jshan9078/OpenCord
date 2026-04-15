@@ -45,10 +45,21 @@ SandboxManager.getOrCreate() --> Creates Vercel Sandbox + starts OpenCode server
 WorkspaceEntryStore.setThreadBinding() --> Persists thread<->sandbox binding
     |
     v
-sendFollowup() --> Pings user in thread: "Your sandbox is ready!"
+[If prompt provided?]
+    |-- YES --> executeQueuedAskRun() --> Streams response to thread
+    |-- NO  --> sendFollowup() --> Pings user in thread: "Your sandbox is ready!"
 ```
 
 ## Two Modes
 
 1. **Empty sandbox** (`/opencode` without args): Creates fresh sandbox, pings user with "Your sandbox is ready! Use /ask in this thread to begin."
 2. **With repo** (`/opencode <repo-url>`): Creates sandbox and clones repository, pings user with "Your sandbox is ready with the repository cloned! Use /ask in this thread to begin."
+
+## Optional Prompt
+
+Both modes support an optional prompt to skip the `/ask` step:
+
+- `/opencode <prompt>` - Start empty sandbox and immediately process the prompt
+- `/opencode <repo-url> <prompt>` - Start with repo and immediately process the prompt
+
+The prompt is queued via `executeQueuedAskRun()` once the sandbox is ready.

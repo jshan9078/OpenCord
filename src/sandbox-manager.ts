@@ -216,6 +216,9 @@ export class SandboxManager {
     // Configure non-interactive GitHub auth for git clone/fetch in tools
     await this.ensureGitAskPassConfigured(sandbox)
 
+    // Configure git user identity for commits
+    await this.configureGitUser(sandbox)
+
     // Inject credentials from env vars into sandbox env
     const envPrefix = this.buildCredentialsEnv()
 
@@ -340,6 +343,37 @@ export class SandboxManager {
         GITHUB_TOKEN: process.env.GITHUB_TOKEN,
       },
     })
+  }
+
+  private async configureGitUser(sandbox: Sandbox): Promise<void> {
+    if (!process.env.GITHUB_TOKEN) {
+      return
+    }
+
+    const ghUserInfo = await this.getGitHubUserInfo()
+    if (!ghUserInfo.name || !ghUserInfo.email) {
+      return
+    }
+
+    await sandbox.runCommand({
+      cmd: "bash",
+      args: [
+        "-lc",
+        `git config --global user.name ${shellEscape(ghUserInfo.name)} && git config --global user.email ${shellEscape(ghUserInfo.email)}`,
+      ],
+    })
+  }
+
+  private async getGitHubUserInfo(): Promise<{ name?: string; email?: string }> {
+    try {
+      const { execSync } = await import("child_process")
+      const output = execSync("gh api user --jq '{name: .name, email: .email}'", {
+        env: { ...process.env, GITHUB_TOKEN: process.env.GITHUB_TOKEN },
+      }).toString()
+      return JSON.parse(output)
+    } catch {
+      return {}
+    }
   }
 
   private async ensureOpenCodeInstalled(sandbox: Sandbox): Promise<void> {
