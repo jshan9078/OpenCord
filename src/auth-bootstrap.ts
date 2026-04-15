@@ -59,7 +59,8 @@ export async function ensureProviderAuth(
       await client.auth.set({ path: { id: providerId }, body: stored })
       return { type: "ok" }
     } catch (error) {
-      console.log("[AuthBootstrap] Stored auth set failed:", error instanceof Error ? error.message : String(error))
+      const errorMsg = error instanceof Error ? error.message : (typeof error === 'object' ? JSON.stringify(error) : String(error))
+      console.log("[AuthBootstrap] Stored auth set failed:", errorMsg)
       // Continue to try auth methods
     }
   }
@@ -76,7 +77,8 @@ export async function ensureProviderAuth(
       console.log("[AuthBootstrap] Env API key auth set succeeded for", providerId)
       return { type: "ok" }
     } catch (error) {
-      console.log("[AuthBootstrap] Env API key auth set failed:", error instanceof Error ? error.message : String(error))
+      const errorMsg = error instanceof Error ? error.message : (typeof error === 'object' ? JSON.stringify(error) : String(error))
+      console.log("[AuthBootstrap] Env API key auth set failed:", errorMsg)
       // Continue to try other auth methods
     }
   }
