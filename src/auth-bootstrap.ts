@@ -24,11 +24,14 @@ function providerEnvCandidates(providerId: string): string[] {
   return candidates
 }
 
-function hasProviderApiKeyInEnv(providerId: string): boolean {
-  return providerEnvCandidates(providerId).some((key) => {
+function getProviderApiKeyFromEnv(providerId: string): string | undefined {
+  for (const key of providerEnvCandidates(providerId)) {
     const value = process.env[key]
-    return typeof value === "string" && value.trim().length > 0
-  })
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim()
+    }
+  }
+  return undefined
 }
 
 export async function ensureProviderAuth(
@@ -59,10 +62,15 @@ export async function ensureProviderAuth(
   const methods = provider.methods
   const hasOAuth = methods.some((m) => m.kind === "oauth")
   const hasApiKey = methods.some((m) => m.kind === "api-key")
-  const hasEnvApiKey = hasProviderApiKeyInEnv(providerId)
+  const envApiKey = getProviderApiKeyFromEnv(providerId)
 
-  if (hasEnvApiKey) {
-    return { type: "ok" }
+  if (envApiKey) {
+    try {
+      await client.auth.set({ path: { id: providerId }, body: { type: "api-key", api_key: envApiKey } })
+      return { type: "ok" }
+    } catch {
+      // Continue to try other auth methods
+    }
   }
 
   if (hasApiKey && !stored) {
