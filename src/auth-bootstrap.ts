@@ -21,6 +21,10 @@ function providerEnvCandidates(providerId: string): string[] {
     candidates.push("GOOGLE_GENERATIVEAI_API_KEY")
   }
 
+  if (providerId === "opencode-go") {
+    candidates.push("OPENCODE_API_KEY")
+  }
+
   return candidates
 }
 
@@ -62,13 +66,15 @@ export async function ensureProviderAuth(
   const methods = provider.methods
   const hasOAuth = methods.some((m) => m.kind === "oauth")
   const hasApiKey = methods.some((m) => m.kind === "api-key")
+  console.log("[AuthBootstrap] Provider methods for", providerId, ":", methods, "hasApiKey:", hasApiKey)
   const envApiKey = getProviderApiKeyFromEnv(providerId)
 
   if (envApiKey) {
     try {
       await client.auth.set({ path: { id: providerId }, body: { type: "api", key: envApiKey } })
       return { type: "ok" }
-    } catch {
+    } catch (error) {
+      console.log("[AuthBootstrap] auth.set failed:", error instanceof Error ? error.message : String(error))
       // Continue to try other auth methods
     }
   }
