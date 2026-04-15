@@ -25,12 +25,16 @@ function providerEnvCandidates(providerId: string): string[] {
 }
 
 function getProviderApiKeyFromEnv(providerId: string): string | undefined {
-  for (const key of providerEnvCandidates(providerId)) {
+  const candidates = providerEnvCandidates(providerId)
+  console.log("[AuthBootstrap] Looking for env vars:", candidates)
+  for (const key of candidates) {
     const value = process.env[key]
     if (typeof value === "string" && value.trim().length > 0) {
+      console.log("[AuthBootstrap] Found env var:", key)
       return value.trim()
     }
   }
+  console.log("[AuthBootstrap] No env API key found for", providerId)
   return undefined
 }
 
@@ -54,7 +58,8 @@ export async function ensureProviderAuth(
     try {
       await client.auth.set({ path: { id: providerId }, body: stored })
       return { type: "ok" }
-    } catch {
+    } catch (error) {
+      console.log("[AuthBootstrap] Stored auth set failed:", error instanceof Error ? error.message : String(error))
       // Continue to try auth methods
     }
   }
@@ -65,10 +70,13 @@ export async function ensureProviderAuth(
   const envApiKey = getProviderApiKeyFromEnv(providerId)
 
   if (envApiKey) {
+    console.log("[AuthBootstrap] Found env API key for", providerId)
     try {
       await client.auth.set({ path: { id: providerId }, body: { type: "api-key", api_key: envApiKey } })
+      console.log("[AuthBootstrap] Env API key auth set succeeded for", providerId)
       return { type: "ok" }
-    } catch {
+    } catch (error) {
+      console.log("[AuthBootstrap] Env API key auth set failed:", error instanceof Error ? error.message : String(error))
       // Continue to try other auth methods
     }
   }
