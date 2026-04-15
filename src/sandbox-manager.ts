@@ -210,6 +210,9 @@ export class SandboxManager {
     // Fetch and inject user config (Blob preferred, gist fallback)
     await this.injectUserConfig(sandbox)
 
+    // Inject auth.json for API key providers (opencode-go, etc.)
+    await this.injectAuthJson(sandbox)
+
     // Configure non-interactive GitHub auth for git clone/fetch in tools
     await this.ensureGitAskPassConfigured(sandbox)
 
@@ -543,6 +546,38 @@ export class SandboxManager {
     }
 
     return sanitized
+  }
+
+  private async injectAuthJson(sandbox: Sandbox): Promise<void> {
+    const opencodeApiKey = process.env.OPENCODE_API_KEY
+    if (!opencodeApiKey) {
+      return
+    }
+
+    const authData: Record<string, { type: string; key: string }> = {}
+    for (const key of Object.keys(process.env)) {
+      if (key.endsWith("_API_KEY") && key !== "GITHUB_TOKEN") {
+        const providerId = key === "OPENCODE_API_KEY" ? "opencode-go" : key.replace(/_API_KEY$/, "").toLowerCase()
+        authData[providerId] = { type: "api", key: process.env[key]! }
+      }
+    }
+
+    if (Object.keys(authData).length === 0) {
+      return
+    }
+
+    const authJson = JSON.stringify(authData, null, 2)
+    const dir = "/home/vercel-sandbox/.local/share/opencode"
+
+    try {
+      await sandbox.runCommand({
+        cmd: "bash",
+        args: ["-lc", `mkdir -p ${dir} && echo '${authJson.replace(/'/g, "'\\''")}' > ${dir}/auth.json`],
+      })
+      console.log("[SandboxManager] Injected auth.json with providers:", Object.keys(authData))
+    } catch (error) {
+      console.log("[SandboxManager] Failed to inject auth.json:", error)
+    }
   }
 
   private async waitForOpenCode(sandbox: Sandbox, port: number, maxAttempts = 30): Promise<void> {
