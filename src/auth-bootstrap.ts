@@ -66,7 +66,7 @@ export async function ensureProviderAuth(
 
   if (envApiKey) {
     try {
-      await client.auth.set({ path: { id: providerId }, body: { type: "apiKey", apiKey: envApiKey } })
+      await client.auth.set({ path: { id: providerId }, body: { type: "api", key: envApiKey } })
       return { type: "ok" }
     } catch {
       // Continue to try other auth methods
