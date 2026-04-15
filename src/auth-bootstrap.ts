@@ -54,7 +54,8 @@ export async function ensureProviderAuth(
     try {
       await client.auth.set({ path: { id: providerId }, body: stored })
       return { type: "ok" }
-    } catch {
+    } catch (error) {
+      console.log("[AuthBootstrap] Stored auth set failed:", error instanceof Error ? error.message : String(error))
       // Continue to try other auth methods
     }
   }
@@ -64,10 +65,13 @@ export async function ensureProviderAuth(
   // where the sandbox server doesn't know about the provider's auth methods
   const envApiKey = getProviderApiKeyFromEnv(providerId)
   if (envApiKey) {
+    console.log("[AuthBootstrap] Found API key for", providerId, "env var candidates:", providerEnvCandidates(providerId))
     try {
       await client.auth.set({ path: { id: providerId }, body: { type: "api", key: envApiKey } })
       return { type: "ok" }
-    } catch {
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : (typeof error === 'object' ? JSON.stringify(error) : String(error))
+      console.log("[AuthBootstrap] Env API key auth set failed:", errMsg)
       // Continue to try other auth methods
     }
   }
