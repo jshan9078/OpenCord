@@ -2245,15 +2245,16 @@ async function processAskInteraction(interaction: Interaction, prompt: string, o
           await sendFollowup(interaction.application_id, interaction.token, "Failed to start session for /ask.")
           return
         }
-        if (projectInfo.repoUrl) {
-          await sendFollowup(
-            interaction.application_id,
-            interaction.token,
-            `<@${userId}> Sandbox ready with **${projectInfo.repoUrl}** cloned. Processing your request...`,
-            undefined,
-            channelId,
-          )
-        }
+      }
+
+      if (projectInfo.repoUrl) {
+        await sendFollowup(
+          interaction.application_id,
+          interaction.token,
+          `<@${userId}> Sandbox ready with **${projectInfo.repoUrl}** cloned. Processing your request...`,
+          undefined,
+          channelId,
+        )
       }
     }
 
