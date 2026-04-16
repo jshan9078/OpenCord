@@ -89,11 +89,13 @@ export class ThreadRuntimeStore {
         readRunLock(threadId),
       ])
       if (!result || !("stream" in result)) {
+        console.info("ThreadRuntimeStore.get no result", { threadId, hasResult: Boolean(result), hasStream: result ? "stream" in result : false })
         return { updatedAt: Date.now(), runLock: separateRunLock }
       }
 
       const text = await new Response(result.stream).text()
       const parsed = JSON.parse(text) as Partial<ThreadRuntimeState> & { sessionByProfile?: Record<string, string> }
+      console.info("ThreadRuntimeStore.get parsed", { threadId, parsed })
       const legacySessionId = parsed.sessionByProfile && typeof parsed.sessionByProfile === "object"
         ? Object.values(parsed.sessionByProfile).find((value): value is string => typeof value === "string" && value.length > 0)
         : undefined
@@ -118,20 +120,23 @@ export class ThreadRuntimeStore {
 
   async set(threadId: string, state: ThreadRuntimeState): Promise<void> {
     requireBlobToken()
+    const serialized = JSON.stringify({
+      sandboxId: state.sandboxId,
+      opencodePassword: state.opencodePassword,
+      sessionId: state.sessionId,
+      updatedAt: Date.now(),
+    })
+    console.info("ThreadRuntimeStore.set writing", { threadId, serialized })
     await put(
       threadPath(threadId),
-      JSON.stringify({
-        sandboxId: state.sandboxId,
-        opencodePassword: state.opencodePassword,
-        sessionId: state.sessionId,
-        updatedAt: Date.now(),
-      }),
+      serialized,
       {
         access: "private",
         allowOverwrite: true,
         contentType: "application/json",
       },
     )
+    console.info("ThreadRuntimeStore.set wrote", { threadId })
   }
 
   async patch(threadId: string, patch: Partial<ThreadRuntimeState>): Promise<ThreadRuntimeState> {
