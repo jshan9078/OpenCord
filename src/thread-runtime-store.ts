@@ -88,6 +88,7 @@ export class ThreadRuntimeStore {
         get(threadPath(threadId), { access: "private" }),
         readRunLock(threadId),
       ])
+      console.info("ThreadRuntimeStore.get result", { threadId, resultType: typeof result, hasStream: result ? "stream" in result : false, keys: result ? Object.keys(result) : [] })
       if (!result || !("stream" in result)) {
         console.info("ThreadRuntimeStore.get no result", { threadId, hasResult: Boolean(result), hasStream: result ? "stream" in result : false })
         return { updatedAt: Date.now(), runLock: separateRunLock }
@@ -100,20 +101,21 @@ export class ThreadRuntimeStore {
         ? Object.values(parsed.sessionByProfile).find((value): value is string => typeof value === "string" && value.length > 0)
         : undefined
 
-        return {
-          sandboxId: typeof parsed.sandboxId === "string" ? parsed.sandboxId : undefined,
-          opencodePassword: typeof parsed.opencodePassword === "string" ? parsed.opencodePassword : undefined,
-          sessionId: typeof parsed.sessionId === "string" ? parsed.sessionId : legacySessionId,
-          runLock: separateRunLock ?? (parsed.runLock && typeof parsed.runLock === "object"
-            ? {
-                runId: String(parsed.runLock.runId || ""),
-                startedAt: Number(parsed.runLock.startedAt || 0),
-                expiresAt: Number(parsed.runLock.expiresAt || 0),
-              }
-            : undefined),
+      return {
+        sandboxId: typeof parsed.sandboxId === "string" ? parsed.sandboxId : undefined,
+        opencodePassword: typeof parsed.opencodePassword === "string" ? parsed.opencodePassword : undefined,
+        sessionId: typeof parsed.sessionId === "string" ? parsed.sessionId : legacySessionId,
+        runLock: separateRunLock ?? (parsed.runLock && typeof parsed.runLock === "object"
+          ? {
+              runId: String(parsed.runLock.runId || ""),
+              startedAt: Number(parsed.runLock.startedAt || 0),
+              expiresAt: Number(parsed.runLock.expiresAt || 0),
+            }
+          : undefined),
           updatedAt: Number(parsed.updatedAt || Date.now()),
         }
-    } catch {
+    } catch (err) {
+      console.error("ThreadRuntimeStore.get error", { threadId, error: String(err) })
       return { updatedAt: Date.now() }
     }
   }
