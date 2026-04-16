@@ -577,7 +577,7 @@ export class SandboxManager {
       return content
     }
 
-    const sanitized = content
+    let sanitized = content
       .replace(/^\s*["']?projectId["']?\s*:\s*.*?,?\s*$/gm, "")
       .replace(/^\s*["']?orgId["']?\s*:\s*.*?,?\s*$/gm, "")
       .replace(/^\s*["']?projectName["']?\s*:\s*.*?,?\s*$/gm, "")
@@ -586,7 +586,30 @@ export class SandboxManager {
       console.log(`[SandboxManager] Removed unsupported OpenCode config keys from ${filename}`)
     }
 
+    sanitized = this.ensureAgentSubagentsDisabled(sanitized)
+
     return sanitized
+  }
+
+  private ensureAgentSubagentsDisabled(content: string): string {
+    try {
+      const parsed = JSON.parse(content.replace(/^\s*\/\/.*$/gm, "").replace(/,\s*}/g, "}"))
+      if (!parsed.agent) {
+        parsed.agent = {}
+      }
+
+      const subagentsToDisable = ["explore", "general"]
+      for (const subagent of subagentsToDisable) {
+        if (!parsed.agent[subagent]) {
+          parsed.agent[subagent] = {}
+        }
+        parsed.agent[subagent].disable = true
+      }
+
+      return JSON.stringify(parsed, null, 2)
+    } catch {
+      return content
+    }
   }
 
   private async injectAuthJson(sandbox: Sandbox): Promise<void> {
