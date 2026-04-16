@@ -1,7 +1,5 @@
-<p align="center">
-  <h1>OpenCord</h1>
-  <p>A serverless Discord bot that bridges your Discord server to AI-powered coding agents running in Vercel Sandboxes. Code, debug, and ship directly from Discord.</p>
-</p>
+<h1 align="center">OpenCord</h1>
+<p align="center">A serverless Discord bot that bridges your Discord server to AI-powered coding agents running in Vercel Sandboxes. Code, debug, and ship directly from Discord.</p>
 
 ## How It Works
 
