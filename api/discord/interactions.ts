@@ -3,12 +3,7 @@ import nacl from "tweetnacl"
 import { waitUntil } from "@vercel/functions"
 import { Sandbox } from "@vercel/sandbox"
 import { sendDiscordRateLimitedRequest } from "../../src/discord-rate-limited-fetch.js"
-
-type SandboxContext = {
-  sandboxId: string
-  opencodeBaseUrl: string
-  opencodePassword: string
-}
+import type { SandboxContext } from "../../src/sandbox-manager.js"
 
 type OAuthStartResult = {
   success?: boolean
@@ -1212,7 +1207,7 @@ async function startThreadSession(
   repoUrl: string | undefined,
   branch: string,
   options?: { snapshotId?: string; resetSessions?: boolean; cloneRepoOnSnapshot?: boolean },
-): Promise<{ sandboxId: string; opencodePassword: string }> {
+): Promise<{ name: string; opencodePassword: string }> {
   const [{ getSandboxManager }, { ThreadRuntimeStore }, { ChannelStateStore }] = await Promise.all([
     import("../../src/sandbox-manager.js"),
     import("../../src/thread-runtime-store.js"),
@@ -1232,7 +1227,7 @@ async function startThreadSession(
     )
     : await sandboxManager.getOrCreate(threadId, undefined, repoUrl, branch)
 
-  await runtimeStore.setSandbox(threadId, context.sandboxId, context.opencodePassword, {
+  await runtimeStore.setSandbox(threadId, context.name, context.opencodePassword, {
     clearSession: options?.resetSessions !== false,
   })
 
@@ -1248,7 +1243,7 @@ async function startThreadSession(
   }
 
   return {
-    sandboxId: context.sandboxId,
+    name: context.name,
     opencodePassword: context.opencodePassword,
   }
 }
@@ -1401,12 +1396,12 @@ async function processCheckpointInteraction(interaction: Interaction, channelId:
     const runtimeStore = new ThreadRuntimeStore()
     const workspaceStore = new WorkspaceEntryStore()
     const runtime = await runtimeStore.get(channelId)
-    if (!runtime.sandboxId) {
+    if (!runtime.sandboxName) {
       await sendFollowup(interaction.application_id, interaction.token, "No active sandbox in this thread. Run /opencode in a channel first.")
       return
     }
 
-    const sandbox = await Sandbox.get({ sandboxId: runtime.sandboxId }).catch(() => null)
+    const sandbox = await Sandbox.get({ name: runtime.sandboxName } as unknown as Parameters<typeof Sandbox.get>[0]).catch(() => null)
     if (!sandbox) {
       await sendFollowup(interaction.application_id, interaction.token, "Sandbox is no longer available.")
       return
@@ -1456,14 +1451,14 @@ async function processDeleteInteraction(interaction: Interaction, channelId: str
     const askQueueStore = new ThreadAskQueueStore()
     const runtime = await runtimeStore.get(channelId)
 
-    if (!runtime.sandboxId) {
+    if (!runtime.sandboxName) {
       await askQueueStore.clearThread(channelId)
       await runtimeStore.clear(channelId)
       await sendFollowup(interaction.application_id, interaction.token, "No active sandbox in this thread. Cleared any queued /ask runs.")
       return
     }
 
-    await sandboxManager.stop(channelId, runtime.sandboxId)
+    await sandboxManager.stop(channelId, runtime.sandboxName)
     await runtimeStore.clear(channelId)
     await askQueueStore.clearThread(channelId)
 
@@ -1551,7 +1546,7 @@ async function executeQueuedAskRun(run: AskQueueRunRequest): Promise<void> {
   logAskStage("execute_runtime_loaded", {
     threadId: conversationId,
     interactionId: run.interactionId,
-    hasSandboxId: Boolean(threadRuntimeState.sandboxId),
+    hasSandboxId: Boolean(threadRuntimeState.sandboxName),
     hasSessionId: Boolean(threadRuntimeState.sessionId),
     bindingProject: threadBinding?.project,
     bindingWorkspaceEntryId: threadBinding?.workspaceEntryId,
@@ -1559,7 +1554,7 @@ async function executeQueuedAskRun(run: AskQueueRunRequest): Promise<void> {
   console.log(`[executeQueuedAskRun] threadRuntimeState=`, threadRuntimeState)
   console.log(`[executeQueuedAskRun] threadBinding=`, threadBinding)
 
-  if (!threadBinding && threadRuntimeState.sandboxId) {
+  if (!threadBinding && threadRuntimeState.sandboxName) {
     logAskStage("execute_binding_missing", {
       threadId: conversationId,
       interactionId: run.interactionId,
@@ -1601,7 +1596,7 @@ async function executeQueuedAskRun(run: AskQueueRunRequest): Promise<void> {
     }
   }
 
-  if (!threadRuntimeState.sandboxId && !commandIsInThread) {
+  if (!threadRuntimeState.sandboxName && !commandIsInThread) {
     const rawBaselineSnapshotId = await ensureRawBaselineSnapshot()
     const fresh = await startThreadSession(conversationId, undefined, "main", {
       snapshotId: rawBaselineSnapshotId,
@@ -1609,12 +1604,12 @@ async function executeQueuedAskRun(run: AskQueueRunRequest): Promise<void> {
     })
     threadRuntimeState = {
       ...threadRuntimeState,
-      sandboxId: fresh.sandboxId,
+      sandboxName: fresh.name,
       opencodePassword: fresh.opencodePassword,
     }
   }
 
-  if (!threadRuntimeState.sandboxId) {
+  if (!threadRuntimeState.sandboxName) {
     await sendFollowup(
       run.applicationId,
       run.token,
@@ -1710,12 +1705,12 @@ async function executeQueuedAskRun(run: AskQueueRunRequest): Promise<void> {
 
     const sandboxManager = getSandboxManager()
     let sandboxContext: SandboxContext
-    const oldSandboxId = threadRuntimeState.sandboxId
+    const oldSandboxId = threadRuntimeState.sandboxName
 
     try {
       sandboxContext = await sandboxManager.getOrCreate(
         conversationId,
-        threadRuntimeState.sandboxId,
+        threadRuntimeState.sandboxName,
         repoUrl,
         branch,
         threadRuntimeState.opencodePassword,
@@ -1723,7 +1718,7 @@ async function executeQueuedAskRun(run: AskQueueRunRequest): Promise<void> {
       logAskStage("sandbox_ready", {
         threadId: conversationId,
         interactionId: run.interactionId,
-        sandboxId: sandboxContext.sandboxId,
+        sandboxId: sandboxContext.name,
       })
     } catch (error) {
       logAskStage("sandbox_error", {
@@ -1740,7 +1735,7 @@ async function executeQueuedAskRun(run: AskQueueRunRequest): Promise<void> {
       return
     }
 
-    await threadRuntimeStore.setSandbox(conversationId, sandboxContext.sandboxId, sandboxContext.opencodePassword)
+    await threadRuntimeStore.setSandbox(conversationId, sandboxContext.name, sandboxContext.opencodePassword)
 
     const client = createSandboxOpencodeClient(sandboxContext.opencodeBaseUrl, sandboxContext.opencodePassword)
     const credentials = new CredentialStore()
@@ -1753,7 +1748,7 @@ async function executeQueuedAskRun(run: AskQueueRunRequest): Promise<void> {
       interactionId: run.interactionId,
       providerId: selection.providerId,
       modelId: selection.modelId,
-      sandboxId: sandboxContext.sandboxId,
+      sandboxId: sandboxContext.name,
       cwd: sessionCwd,
       repoUrl,
     })
@@ -1780,7 +1775,7 @@ async function executeQueuedAskRun(run: AskQueueRunRequest): Promise<void> {
     }
 
   // Check if sandbox was newly created (old one expired) - fetch recovery context
-    const isNewSandbox = oldSandboxId && oldSandboxId !== sandboxContext.sandboxId
+    const isNewSandbox = oldSandboxId && oldSandboxId !== sandboxContext.name
 
   // Warn user about lost local changes if sandbox expired
     if (isNewSandbox && repoUrl) {
@@ -2199,11 +2194,11 @@ async function processAskInteraction(interaction: Interaction, prompt: string, o
       effectiveChannelId,
       interactionId: interaction.id,
       inThread,
-      hasSandboxId: Boolean(runtimeState.sandboxId),
+      hasSandboxId: Boolean(runtimeState.sandboxName),
       hasRepo: Boolean(projectInfo.repoUrl),
     })
 
-    if (!runtimeState.sandboxId) {
+    if (!runtimeState.sandboxName) {
       logAskStage("ask_no_session_autostart", { threadId: channelId, interactionId: interaction.id, inThread })
       const rawBaselineSnapshotId = await ensureRawBaselineSnapshot()
 
@@ -2224,7 +2219,7 @@ async function processAskInteraction(interaction: Interaction, prompt: string, o
         logAskStage("ask_session_started_checking_store", { threadId })
         runtimeState = await runtimeStore.get(threadId)
         logAskStage("ask_runtime_state", { threadId, runtimeState })
-        if (!runtimeState.sandboxId) {
+        if (!runtimeState.sandboxName) {
           await sendFollowup(interaction.application_id, interaction.token, "Failed to start session for /ask.")
           return
         }
@@ -2241,7 +2236,7 @@ async function processAskInteraction(interaction: Interaction, prompt: string, o
         logAskStage("ask_session_started_checking_store", { channelId })
         runtimeState = await runtimeStore.get(channelId)
         logAskStage("ask_runtime_state", { channelId, runtimeState })
-        if (!runtimeState.sandboxId) {
+        if (!runtimeState.sandboxName) {
           await sendFollowup(interaction.application_id, interaction.token, "Failed to start session for /ask.")
           return
         }

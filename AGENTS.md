@@ -23,8 +23,8 @@ When working on this codebase, refer to the architecture documentation:
 ## Important Patterns
 
 - **Thread-per-session**: Each Discord thread gets its own Vercel Sandbox
-- **Blob storage for durability**: State persists even when sandboxes are stopped
-- **Snapshot-based resumption**: Checkpoints saved as Vercel Snapshots
+- **Persistent sandboxes**: Sandboxes automatically save their state when stopped and resume from the last saved state
+- **Blob storage for durability**: Thread metadata and state persists in Vercel Blob
 
 ## Documentation Policy
 

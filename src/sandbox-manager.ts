@@ -6,7 +6,7 @@ import { Sandbox } from "@vercel/sandbox"
 import { get } from "@vercel/blob"
 
 export interface SandboxContext {
-  sandboxId: string
+  name: string
   opencodeBaseUrl: string
   opencodePassword: string
 }
@@ -18,7 +18,7 @@ export interface OAuthStartResult {
   userCode?: string
   instructions?: string
   deviceAuthId?: string
-  sandboxId?: string
+  sandboxName?: string
   opencodePassword?: string
 }
 
@@ -33,13 +33,15 @@ export interface SandboxManagerOptions {
   vcpus?: number
   timeout?: number
   persistent?: boolean
+  snapshotExpiration?: number
 }
 
 const DEFAULT_OPTIONS: Required<SandboxManagerOptions> = {
   runtime: "node24",
   vcpus: 2,
-  timeout: 45 * 60 * 1000, // 45 minutes
+  timeout: 45 * 60 * 1000,
   persistent: true,
+  snapshotExpiration: 7 * 24 * 60 * 60 * 1000,
 }
 
 const OPENCODE_PORT = 4096
@@ -59,7 +61,7 @@ export class SandboxManager {
 
   async getOrCreate(
     channelId: string,
-    sandboxIdFromState: string | undefined,
+    sandboxNameFromState: string | undefined,
     repoUrl?: string,
     branch = "main",
     opencodePasswordFromState?: string,
@@ -82,15 +84,14 @@ export class SandboxManager {
 
     let sandbox: Sandbox
 
-    // Try to resume existing sandbox by ID
-    if (sandboxIdFromState) {
+    if (sandboxNameFromState) {
       try {
-        sandbox = await Sandbox.get({ sandboxId: sandboxIdFromState })
-        console.log(`[SandboxManager] Resumed sandbox: ${sandbox.sandboxId}`)
+        sandbox = await Sandbox.get({ name: sandboxNameFromState } as unknown as Parameters<typeof Sandbox.get>[0])
+        console.log(`[SandboxManager] Resumed sandbox: ${sandbox.name}`)
 
         if (opencodePasswordFromState) {
           const resumedContext: SandboxContext = {
-            sandboxId: sandbox.sandboxId,
+            name: sandbox.name,
             opencodeBaseUrl: this.getOpenCodeBaseUrl(sandbox),
             opencodePassword: opencodePasswordFromState,
           }
@@ -111,11 +112,10 @@ export class SandboxManager {
           }
         }
       } catch (error) {
-        console.log(`[SandboxManager] Could not resume sandbox ${sandboxIdFromState}, creating new`)
+        console.log(`[SandboxManager] Could not resume sandbox ${sandboxNameFromState}, creating new`)
         sandbox = await this.createSandbox(channelId, repoUrl, branch)
       }
     } else {
-      // No ID, create new
       sandbox = await this.createSandbox(channelId, repoUrl, branch)
     }
 
@@ -124,11 +124,11 @@ export class SandboxManager {
       this.cache.set(channelId, context)
       return context
     } catch (error) {
-      if (!sandboxIdFromState || !isSandboxStoppedError(error)) {
+      if (!sandboxNameFromState || !isSandboxStoppedError(error)) {
         throw error
       }
 
-      console.log(`[SandboxManager] Sandbox ${sandboxIdFromState} was stopped; creating a new sandbox`)
+      console.log(`[SandboxManager] Sandbox ${sandboxNameFromState} was stopped; creating a new sandbox`)
       const freshSandbox = await this.createSandbox(channelId, repoUrl, branch)
       const context = await this.ensureOpenCodeServer(freshSandbox)
       this.cache.set(channelId, context)
@@ -144,16 +144,19 @@ export class SandboxManager {
   ): Promise<SandboxContext> {
     console.log(`[createFromSnapshot] Creating from snapshot=${snapshotId}, repoUrl=${repoUrl}, branch=${branch}`)
     const sandbox = await Sandbox.create({
+      name: this.getSandboxName(channelId),
       runtime: this.options.runtime,
       resources: { vcpus: this.options.vcpus },
       timeout: this.options.timeout,
       ports: [OPENCODE_PORT],
+      persistent: this.options.persistent,
+      snapshotExpiration: this.options.snapshotExpiration,
       source: {
         type: "snapshot",
         snapshotId,
       },
     })
-    console.log(`[createFromSnapshot] Sandbox created, sandboxId=${sandbox.sandboxId}`)
+    console.log(`[createFromSnapshot] Sandbox created, name=${sandbox.name}`)
 
     if (repoUrl) {
       console.log(`[createFromSnapshot] Cloning repo=${repoUrl} into sandbox`)
@@ -164,7 +167,7 @@ export class SandboxManager {
     }
 
     const context = await this.ensureOpenCodeServer(sandbox)
-    console.log(`[createFromSnapshot] OpenCode server ready, sandboxId=${sandbox.sandboxId}`)
+    console.log(`[createFromSnapshot] OpenCode server ready, name=${sandbox.name}`)
     this.cache.set(channelId, context)
     return context
   }
@@ -187,15 +190,18 @@ export class SandboxManager {
     const name = this.getSandboxName(channelId)
 
     const createOptions: Parameters<typeof Sandbox.create>[0] = {
+      name,
       runtime: this.options.runtime,
       resources: { vcpus: this.options.vcpus },
       timeout: this.options.timeout,
       ports: [OPENCODE_PORT],
+      persistent: this.options.persistent,
+      snapshotExpiration: this.options.snapshotExpiration,
     }
 
     console.log(`[SandboxManager] Creating sandbox: ${name}`)
     const sandbox = await Sandbox.create(createOptions)
-    console.log(`[SandboxManager] Sandbox created: ${sandbox.sandboxId}`)
+    console.log(`[SandboxManager] Sandbox created: ${sandbox.name}`)
 
     if (repoUrl) {
       await this.cloneRepoIntoSandbox(sandbox, repoUrl, branch)
@@ -209,33 +215,22 @@ export class SandboxManager {
     const port = OPENCODE_PORT
     const opencodeBaseUrl = this.getOpenCodeBaseUrl(sandbox)
 
-    // Install OpenCode if needed
     await this.ensureOpenCodeInstalled(sandbox)
     await this.ensureGitHubCliInstalled(sandbox)
     const opencodePath = await this.resolveOpenCodePath(sandbox)
 
-    // Fetch and inject user config (Blob preferred, gist fallback)
     await this.injectUserConfig(sandbox)
-
-    // Inject auth.json for API key providers (opencode-go, etc.)
     await this.injectAuthJson(sandbox)
-
-    // Configure non-interactive GitHub auth for git clone/fetch in tools
     await this.ensureGitAskPassConfigured(sandbox)
-
-    // Configure git user identity for commits
     await this.configureGitUser(sandbox)
 
-    // Inject credentials from env vars into sandbox env
     const envPrefix = this.buildCredentialsEnv()
 
-    // Ensure previous OpenCode server process does not hold the port
     await sandbox.runCommand({
       cmd: "bash",
       args: ["-lc", "pkill -f 'opencode serve' >/dev/null 2>&1 || true"],
     })
 
-    // Start OpenCode server with injected credentials
     console.log(`[SandboxManager] Starting OpenCode server`)
     await sandbox.runCommand({
       cmd: "bash",
@@ -245,11 +240,10 @@ export class SandboxManager {
       ],
     })
 
-    // Wait for server to be ready
     await this.waitForOpenCode(sandbox, port)
 
     return {
-      sandboxId: sandbox.sandboxId,
+      name: sandbox.name,
       opencodeBaseUrl,
       opencodePassword: password,
     }
@@ -393,7 +387,6 @@ export class SandboxManager {
   }
 
   private async ensureOpenCodeInstalled(sandbox: Sandbox): Promise<void> {
-    // Check if opencode is available
     const checkResult = await sandbox.runCommand({
       cmd: "which",
       args: ["opencode"],
@@ -415,7 +408,6 @@ export class SandboxManager {
       args: ["-lc", "curl -fsSL https://opencode.ai/install | bash"],
     })
 
-    // Ensure executable permission
     await sandbox.runCommand({
       cmd: "bash",
       args: ["-lc", "chmod +x ~/.local/bin/opencode 2>/dev/null || true"],
@@ -668,7 +660,7 @@ export class SandboxManager {
       await new Promise((resolve) => setTimeout(resolve, 1000))
     }
 
-    console.error(`[SandboxManager] Sandbox ID: ${sandbox.sandboxId}`)
+    console.error(`[SandboxManager] Sandbox name: ${sandbox.name}`)
 
     const runAndLog = async (label: string, cmd: string, args: string[]): Promise<void> => {
       try {
@@ -702,7 +694,7 @@ export class SandboxManager {
     options?: { cwd?: string; env?: Record<string, string> },
   ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
     const context = await this.getOrCreate(channelId, undefined)
-    const sandbox = await Sandbox.get({ sandboxId: context.sandboxId })
+    const sandbox = await Sandbox.get({ name: context.name })
     const result = await sandbox.runCommand({
       cmd,
       args,
@@ -721,10 +713,10 @@ export class SandboxManager {
     channelId: string,
     providerId: string,
     method?: number,
-    sandboxIdFromState?: string,
+    sandboxNameFromState?: string,
     opencodePasswordFromState?: string,
   ): Promise<OAuthStartResult> {
-    const context = await this.getOrCreate(channelId, sandboxIdFromState, undefined, "main", opencodePasswordFromState)
+    const context = await this.getOrCreate(channelId, sandboxNameFromState, undefined, "main", opencodePasswordFromState)
     const url = `${context.opencodeBaseUrl}/provider/${providerId}/oauth/authorize`
     const resolvedMethod = await this.resolveOAuthMethodIndex(context, providerId, method)
     if (resolvedMethod === undefined) {
@@ -792,7 +784,7 @@ export class SandboxManager {
       userCode: userCodeValue,
       instructions: result.instructions,
       deviceAuthId: deviceAuthIdValue,
-      sandboxId: context.sandboxId,
+      sandboxName: context.name,
       opencodePassword: context.opencodePassword,
     }
   }
@@ -802,10 +794,10 @@ export class SandboxManager {
     providerId: string,
     method: number | undefined,
     deviceAuthId?: string,
-    sandboxIdFromState?: string,
+    sandboxNameFromState?: string,
     opencodePasswordFromState?: string,
   ): Promise<OAuthCompleteResult> {
-    const context = await this.getOrCreate(channelId, sandboxIdFromState, undefined, "main", opencodePasswordFromState)
+    const context = await this.getOrCreate(channelId, sandboxNameFromState, undefined, "main", opencodePasswordFromState)
     const resolvedMethod = await this.resolveOAuthMethodIndex(context, providerId, method)
     if (resolvedMethod === undefined) {
       return {
@@ -836,7 +828,7 @@ export class SandboxManager {
     }
 
     await response.text().catch(() => "")
-    const tokens = await this.readProviderAuthFromSandbox(context.sandboxId, providerId)
+    const tokens = await this.readProviderAuthFromSandbox(context.name, providerId)
 
     return {
       success: true,
@@ -845,11 +837,11 @@ export class SandboxManager {
   }
 
   private async readProviderAuthFromSandbox(
-    sandboxId: string,
+    sandboxName: string,
     runtimeProviderId: string,
   ): Promise<Record<string, unknown> | undefined> {
     try {
-      const sandbox = await Sandbox.get({ sandboxId })
+      const sandbox = await Sandbox.get({ name: sandboxName })
       const content = await sandbox.readFileToBuffer({ path: "/home/vercel-sandbox/.local/share/opencode/auth.json" })
       if (!content) {
         return undefined
@@ -910,13 +902,13 @@ export class SandboxManager {
     return undefined
   }
 
-  async stop(channelId: string, sandboxIdFromState?: string): Promise<void> {
+  async stop(channelId: string, sandboxNameFromState?: string): Promise<void> {
     const context = this.cache.get(channelId)
-    const sandboxId = context?.sandboxId || sandboxIdFromState
+    const sandboxName = context?.name || sandboxNameFromState
 
-    if (sandboxId) {
+    if (sandboxName) {
       try {
-        const sandbox = await Sandbox.get({ sandboxId })
+        const sandbox = await Sandbox.get({ name: sandboxName })
         await sandbox.stop()
       } catch (e) {
         // Already stopped or unavailable

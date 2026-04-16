@@ -88,10 +88,11 @@ Discord will verify this URL immediately. Ensure your code is deployed and the p
 
 Run in Discord:
 
+Example:
 ```
 /update
-/use-provider openai
-/use-model gpt-4o
+/use-provider opencode-go
+/use-model minimax-m2.7
 ```
 
 ## Authentication
@@ -179,7 +180,7 @@ All persistent state lives in Vercel Blob:
 
 | Store | Path | Purpose |
 |-------|------|---------|
-| ThreadRuntimeStore | `runtime/threads/` | Sandbox ID, session ID, run locks |
+| ThreadRuntimeStore | `runtime/threads/` | Sandbox name, session ID, run locks |
 | WorkspaceEntryStore | `runtime/workspaces/` | Project metadata, thread bindings |
 | SelectionStore | `preferences/` | User default provider/model |
 | OAuthTokenStore | `oauth/` | Provider OAuth tokens |
@@ -189,10 +190,13 @@ Channel state (repo, branch) is stored on the local filesystem.
 
 ### Sandbox Lifecycle
 
-- **Creation**: Sandbox is created from a baseline snapshot or resumed from a checkpoint
+OpenCord uses **persistent sandboxes** from Vercel. Each Discord thread maps to one named sandbox that automatically saves its state when stopped.
+
+- **Creation**: Sandbox is created with a unique name per thread and auto-restores on resume
 - **Clone**: Git repo is cloned into `/vercel/sandbox` with GitHub token via `GIT_ASKPASS`
 - **Boot**: OpenCode server starts on port 4096 with user config injected from Blob
-- **Cleanup**: Thread deletion stops the sandbox without checkpointing
+- **Persistence**: When a sandbox stops, its filesystem state is automatically snapshotted
+- **Resume**: When `/ask` runs again, the sandbox resumes from its last saved state
 
 ## Documentation
 

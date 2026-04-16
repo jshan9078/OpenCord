@@ -9,7 +9,7 @@ export interface ThreadRunLock {
 }
 
 export interface ThreadRuntimeState {
-  sandboxId?: string
+  sandboxName?: string
   opencodePassword?: string
   sessionId?: string
   runLock?: ThreadRunLock
@@ -103,7 +103,7 @@ export class ThreadRuntimeStore {
         : undefined
 
       return {
-        sandboxId: typeof parsed.sandboxId === "string" ? parsed.sandboxId : undefined,
+        sandboxName: (typeof parsed.sandboxName === "string" ? parsed.sandboxName : undefined) ?? ((parsed as { sandboxId?: string }).sandboxId ?? undefined),
         opencodePassword: typeof parsed.opencodePassword === "string" ? parsed.opencodePassword : undefined,
         sessionId: typeof parsed.sessionId === "string" ? parsed.sessionId : legacySessionId,
         runLock: separateRunLock ?? (parsed.runLock && typeof parsed.runLock === "object"
@@ -124,7 +124,7 @@ export class ThreadRuntimeStore {
   async set(threadId: string, state: ThreadRuntimeState): Promise<void> {
     requireBlobToken()
     const serialized = JSON.stringify({
-      sandboxId: state.sandboxId,
+      sandboxName: state.sandboxName,
       opencodePassword: state.opencodePassword,
       sessionId: state.sessionId,
       updatedAt: Date.now(),
@@ -156,13 +156,13 @@ export class ThreadRuntimeStore {
 
   async setSandbox(
     threadId: string,
-    sandboxId: string,
+    sandboxName: string,
     opencodePassword: string,
     options?: { clearSession?: boolean },
   ): Promise<void> {
-    console.log(`[ThreadRuntimeStore] setSandbox threadId=${threadId}, sandboxId=${sandboxId}`)
+    console.log(`[ThreadRuntimeStore] setSandbox threadId=${threadId}, sandboxName=${sandboxName}`)
     const next: Partial<ThreadRuntimeState> = {
-      sandboxId,
+      sandboxName,
       opencodePassword,
     }
     if (options?.clearSession) {

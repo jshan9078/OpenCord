@@ -18,8 +18,8 @@ importers:
         specifier: ^2.2.13
         version: 2.2.13
       '@vercel/sandbox':
-        specifier: ^1.9.2
-        version: 1.9.3
+        specifier: beta
+        version: 2.0.0-beta.13
       discord.js:
         specifier: ^14.22.1
         version: 14.26.2
@@ -428,8 +428,8 @@ packages:
     resolution: {integrity: sha512-UycprH3T6n3jH0k44NHMa7pnFHGu/N05MjojYr+Mc6I7obkoLIJujSWwin1pCvdy/eOxrI/l3uDLQsmcrOb4ug==}
     engines: {node: '>= 20'}
 
-  '@vercel/sandbox@1.9.3':
-    resolution: {integrity: sha512-G6ef1izdlYftkmv2xxBfks76gm2oxIH3LgiASe8WMw7xoge6zFzyFjY91/dPMT0Pkd4UNX9nsaOedj98ywdk8Q==}
+  '@vercel/sandbox@2.0.0-beta.13':
+    resolution: {integrity: sha512-p05ShlOrrL4C2OnR68AEksP3HUaXsvgIlwAOu8NQjsk2qNoXaq4gCKQscHOb44/TdLQGT0EkdADxQIzPY8Eoug==}
 
   '@vitest/expect@3.2.4':
     resolution: {integrity: sha512-Io0yyORnB6sikFlt8QW5K7slY4OjqNX9jmJQ02QDda8lyM6B5oNgVWoSoKPac8/kgnCUzuHQKrSLtu/uOqqrig==}
@@ -1102,7 +1102,7 @@ snapshots:
 
   '@vercel/oidc@3.2.0': {}
 
-  '@vercel/sandbox@1.9.3':
+  '@vercel/sandbox@2.0.0-beta.13':
     dependencies:
       '@vercel/oidc': 3.2.0
       '@workflow/serde': 4.1.0-beta.2

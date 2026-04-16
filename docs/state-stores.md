@@ -4,7 +4,7 @@
 
 | Property | Purpose |
 |----------|---------|
-| Sandbox ID | Vercel Sandbox identifier |
+| Sandbox name | Vercel Sandbox identifier (unique name per channel) |
 | Session ID | OpenCode session |
 | Run locks | Prevents concurrent `/ask` runs |
 
