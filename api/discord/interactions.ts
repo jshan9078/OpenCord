@@ -2177,6 +2177,14 @@ async function processAskInteraction(interaction: Interaction, prompt: string, o
     let runtimeState = await runtimeStore.get(channelId)
     const inThread = await isThreadChannel(channelId)
 
+    logAskStage("ask_state_check", {
+      threadId: channelId,
+      interactionId: interaction.id,
+      inThread,
+      hasSandboxId: Boolean(runtimeState.sandboxId),
+      hasRepo: Boolean(channelState.repoUrl),
+    })
+
     if (!runtimeState.sandboxId) {
       logAskStage("ask_no_session_autostart", { threadId: channelId, interactionId: interaction.id, inThread })
       const rawBaselineSnapshotId = await ensureRawBaselineSnapshot()
