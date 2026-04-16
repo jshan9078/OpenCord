@@ -86,7 +86,7 @@ export class ThreadRuntimeStore {
     try {
       console.info("ThreadRuntimeStore.get calling blob", { threadId, path: threadPath(threadId) })
       const [result, separateRunLock] = await Promise.all([
-        get(threadPath(threadId), { access: "private" }),
+        get(threadPath(threadId), { access: "private", useCache: false }),
         readRunLock(threadId),
       ])
       console.info("ThreadRuntimeStore.get result", { threadId, resultType: typeof result, hasStream: result ? "stream" in result : false, keys: result ? Object.keys(result) : [] })
