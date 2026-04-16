@@ -2175,28 +2175,45 @@ async function processAskInteraction(interaction: Interaction, prompt: string, o
     const channelStateStore = new ChannelStateStore()
     const channelState = channelStateStore.get(channelId)
     let runtimeState = await runtimeStore.get(channelId)
+    const inThread = await isThreadChannel(channelId)
 
     if (!runtimeState.sandboxId) {
-      logAskStage("ask_no_session_autostart", { threadId: channelId, interactionId: interaction.id })
+      logAskStage("ask_no_session_autostart", { threadId: channelId, interactionId: interaction.id, inThread })
       const rawBaselineSnapshotId = await ensureRawBaselineSnapshot()
-      const threadId = await createThreadFromChannel(channelId, "OpenCode Session")
-      if (!threadId) {
-        await sendFollowup(interaction.application_id, interaction.token, "Failed to create thread for /ask.")
-        return
+
+      if (!inThread) {
+        const threadId = await createThreadFromChannel(channelId, "OpenCode Session")
+        if (!threadId) {
+          await sendFollowup(interaction.application_id, interaction.token, "Failed to create thread for /ask.")
+          return
+        }
+        const repoUrl = channelState.repoUrl
+        const branch = channelState.branch || "main"
+        await startThreadSession(threadId, repoUrl, branch, {
+          snapshotId: rawBaselineSnapshotId,
+          resetSessions: true,
+          cloneRepoOnSnapshot: true,
+        })
+        runtimeState = await runtimeStore.get(threadId)
+        if (!runtimeState.sandboxId) {
+          await sendFollowup(interaction.application_id, interaction.token, "Failed to start session for /ask.")
+          return
+        }
+        channelId = threadId
+      } else {
+        const repoUrl = channelState.repoUrl
+        const branch = channelState.branch || "main"
+        await startThreadSession(channelId, repoUrl, branch, {
+          snapshotId: rawBaselineSnapshotId,
+          resetSessions: true,
+          cloneRepoOnSnapshot: true,
+        })
+        runtimeState = await runtimeStore.get(channelId)
+        if (!runtimeState.sandboxId) {
+          await sendFollowup(interaction.application_id, interaction.token, "Failed to start session for /ask.")
+          return
+        }
       }
-      const repoUrl = channelState.repoUrl
-      const branch = channelState.branch || "main"
-      await startThreadSession(threadId, repoUrl, branch, {
-        snapshotId: rawBaselineSnapshotId,
-        resetSessions: true,
-        cloneRepoOnSnapshot: true,
-      })
-      runtimeState = await runtimeStore.get(threadId)
-      if (!runtimeState.sandboxId) {
-        await sendFollowup(interaction.application_id, interaction.token, "Failed to start session for /ask.")
-        return
-      }
-      channelId = threadId
     }
 
     const statusMessage = "Processing..."
