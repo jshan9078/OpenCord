@@ -84,6 +84,7 @@ export class ThreadRuntimeStore {
     requireBlobToken()
 
     try {
+      console.info("ThreadRuntimeStore.get calling blob", { threadId, path: threadPath(threadId) })
       const [result, separateRunLock] = await Promise.all([
         get(threadPath(threadId), { access: "private" }),
         readRunLock(threadId),
@@ -112,10 +113,10 @@ export class ThreadRuntimeStore {
               expiresAt: Number(parsed.runLock.expiresAt || 0),
             }
           : undefined),
-          updatedAt: Number(parsed.updatedAt || Date.now()),
-        }
+        updatedAt: Number(parsed.updatedAt || Date.now()),
+      }
     } catch (err) {
-      console.error("ThreadRuntimeStore.get error", { threadId, error: String(err) })
+      console.error("ThreadRuntimeStore.get error", { threadId, error: String(err), stack: err instanceof Error ? err.stack : undefined })
       return { updatedAt: Date.now() }
     }
   }
