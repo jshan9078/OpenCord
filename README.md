@@ -95,6 +95,40 @@ Run in Discord:
 /use-model gpt-4o
 ```
 
+## Authentication
+
+You can authenticate with providers using either API keys or OAuth.
+
+### API Keys
+
+Set provider API keys as environment variables in your Vercel project:
+
+| Variable | Provider |
+|----------|----------|
+| `OPENAI_API_KEY` | OpenAI |
+| `ANTHROPIC_API_KEY` | Anthropic |
+| `OPENCODE_API_KEY` | opencode-go |
+
+The format is `{PROVIDER}_API_KEY` in uppercase. For example, `OPENCODE_API_KEY` for the opencode-go provider.
+
+### OAuth
+
+Some providers support OAuth authentication. Use the `/auth-connect` command in Discord:
+
+```
+/auth-connect openai
+```
+
+The bot will display a URL to complete the OAuth flow. Run the command again after completing authorization.
+
+To disconnect a provider:
+
+```
+/auth-disconnect openai
+```
+
+Use `/config` to check your current auth status for all providers.
+
 ## Commands
 
 ### Session Management
