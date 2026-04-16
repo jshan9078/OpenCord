@@ -1,6 +1,7 @@
 /**
  * Persists state per Discord channel (provider, model, repo, branch, sessions).
- * Used by the interactions endpoint to maintain conversation context across requests.
+ * Uses local filesystem for synchronous access.
+ * Note: For serverless, use ChannelProjectStore for durable repo/branch persistence.
  */
 import fs from "fs"
 import { getConfigDir, getConfigPath } from "./storage-paths.js"
@@ -95,5 +96,64 @@ export class ChannelStateStore {
     delete state.projectName
     this.set(state)
     return state
+  }
+}
+
+/**
+ * Persists project info (repo, branch) per Discord channel using Vercel Blob.
+ * This is separate from ChannelStateStore because Blob operations are async.
+ */
+import { get, put } from "@vercel/blob"
+interface ChannelProjectConfig {
+  channels: Record<string, { repoUrl?: string; branch?: string; projectName?: string }>
+}
+
+const PROJECT_BLOB_PATH = "runtime/channel-projects.json"
+
+function requireBlobToken(): void {
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    throw new Error("BLOB_READ_WRITE_TOKEN is required for channel project storage.")
+  }
+}
+
+async function loadProjects(): Promise<ChannelProjectConfig> {
+  requireBlobToken()
+  try {
+    const result = await get(PROJECT_BLOB_PATH, { access: "private" })
+    if (!result || !("stream" in result)) {
+      return { channels: {} }
+    }
+    const text = await new Response(result.stream).text()
+    return JSON.parse(text) as ChannelProjectConfig
+  } catch {
+    return { channels: {} }
+  }
+}
+
+async function saveProjects(config: ChannelProjectConfig): Promise<void> {
+  requireBlobToken()
+  await put(PROJECT_BLOB_PATH, JSON.stringify(config, null, 2), {
+    access: "private",
+    allowOverwrite: true,
+    contentType: "application/json",
+  })
+}
+
+export class ChannelProjectStore {
+  async getProject(channelId: string): Promise<{ repoUrl?: string; branch?: string; projectName?: string }> {
+    const config = await loadProjects()
+    return config.channels[channelId] || {}
+  }
+
+  async setProject(channelId: string, repoUrl: string, branch: string, projectName?: string): Promise<void> {
+    const config = await loadProjects()
+    config.channels[channelId] = { repoUrl, branch, projectName }
+    await saveProjects(config)
+  }
+
+  async clearProject(channelId: string): Promise<void> {
+    const config = await loadProjects()
+    delete config.channels[channelId]
+    await saveProjects(config)
   }
 }

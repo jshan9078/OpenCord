@@ -1008,7 +1008,7 @@ async function handleAuthConnect(interaction: Interaction, text: string): Promis
   }
 
   const stateStore = new ChannelStateStore()
-  const state = stateStore.get(channelId)
+  const state = await stateStore.get(channelId)
 
   const parts = text.replace(/^auth-connect\s*/i, "").replace(/^auth connect\s*/i, "").trim()
   const providerId = parts.split(" ")[0]
@@ -1236,15 +1236,15 @@ async function startThreadSession(
     clearSession: options?.resetSessions !== false,
   })
 
-  const threadState = channelStateStore.get(threadId)
+  const threadState = await channelStateStore.get(threadId)
   if (repoUrl) {
     const projectName = repoUrl.split("/").slice(-1)[0] || "Project"
-    channelStateStore.setProject(threadId, repoUrl, branch, projectName)
+    await channelStateStore.setProject(threadId, repoUrl, branch, projectName)
   } else {
     delete threadState.repoUrl
     delete threadState.branch
     delete threadState.projectName
-    channelStateStore.set(threadState)
+    await channelStateStore.set(threadState)
   }
 
   return {
@@ -1265,13 +1265,13 @@ async function handleProjectCommand(interaction: Interaction, repoInput?: string
   }
 
   try {
-    const [{ ChannelStateStore }] = await Promise.all([
+    const [{ ChannelProjectStore }] = await Promise.all([
       import("../../src/channel-state-store.js"),
     ])
     const parsed = parseProjectInput(repoInput)
-    const channelStateStore = new ChannelStateStore()
+    const projectStore = new ChannelProjectStore()
     const effectiveBranch = branch || parsed.branch
-    channelStateStore.setProject(channelId, parsed.repoUrl, effectiveBranch, parsed.project)
+    await projectStore.setProject(channelId, parsed.repoUrl, effectiveBranch, parsed.project)
 
     return json({
       type: 4,
@@ -1527,7 +1527,7 @@ async function executeQueuedAskRun(run: AskQueueRunRequest): Promise<void> {
 
     const stateStore = new ChannelStateStore()
     const selectionStore = new SelectionStore()
-    const channelState = stateStore.get(channelId)
+    const channelState = await stateStore.get(channelId)
     const commandIsInThread = await isThreadChannel(channelId)
 
   if (!commandIsInThread) {
@@ -1540,7 +1540,7 @@ async function executeQueuedAskRun(run: AskQueueRunRequest): Promise<void> {
   logAskStage("execute_working", { threadId: channelId, interactionId: run.interactionId })
 
   const conversationId = effectiveThreadId
-  const conversationState = stateStore.get(conversationId)
+  const conversationState = await stateStore.get(conversationId)
   const [{ WorkspaceEntryStore }] = await Promise.all([
     import("../../src/workspace-entry-store.js"),
   ])
@@ -2162,7 +2162,7 @@ async function processAskInteraction(interaction: Interaction, prompt: string, o
       return
     }
 
-    const [{ ThreadRuntimeStore }, { ChannelStateStore }] = await Promise.all([
+    const [{ ThreadRuntimeStore }, { ChannelStateStore, ChannelProjectStore }] = await Promise.all([
       import("../../src/thread-runtime-store.js"),
       import("../../src/channel-state-store.js"),
     ])
@@ -2174,18 +2174,21 @@ async function processAskInteraction(interaction: Interaction, prompt: string, o
 
     const runtimeStore = new ThreadRuntimeStore()
     const channelStateStore = new ChannelStateStore()
-    let channelState = channelStateStore.get(channelId)
+    const channelProjectStore = new ChannelProjectStore()
+    const channelState = channelStateStore.get(channelId)
     let runtimeState = await runtimeStore.get(channelId)
     const inThread = await isThreadChannel(channelId)
 
+    let projectInfo = await channelProjectStore.getProject(channelId)
     let effectiveChannelId = channelId
-    if (inThread && !channelState.repoUrl) {
+
+    if (inThread && !projectInfo.repoUrl) {
       const parentId = interaction.message?.parent_id
       if (parentId) {
         logAskStage("ask_fallback_to_parent", { threadId: channelId, parentId })
-        const parentState = channelStateStore.get(parentId)
-        if (parentState.repoUrl) {
-          channelState = parentState
+        const parentProject = await channelProjectStore.getProject(parentId)
+        if (parentProject.repoUrl) {
+          projectInfo = parentProject
           effectiveChannelId = parentId
         }
       }
@@ -2197,7 +2200,7 @@ async function processAskInteraction(interaction: Interaction, prompt: string, o
       interactionId: interaction.id,
       inThread,
       hasSandboxId: Boolean(runtimeState.sandboxId),
-      hasRepo: Boolean(channelState.repoUrl),
+      hasRepo: Boolean(projectInfo.repoUrl),
     })
 
     if (!runtimeState.sandboxId) {
@@ -2210,8 +2213,8 @@ async function processAskInteraction(interaction: Interaction, prompt: string, o
           await sendFollowup(interaction.application_id, interaction.token, "Failed to create thread for /ask.")
           return
         }
-        const repoUrl = channelState.repoUrl
-        const branch = channelState.branch || "main"
+        const repoUrl = projectInfo.repoUrl
+        const branch = projectInfo.branch || "main"
         logAskStage("ask_starting_session", { threadId, repoUrl, branch })
         await startThreadSession(threadId, repoUrl, branch, {
           snapshotId: rawBaselineSnapshotId,
@@ -2227,8 +2230,8 @@ async function processAskInteraction(interaction: Interaction, prompt: string, o
         }
         channelId = threadId
       } else {
-        const repoUrl = channelState.repoUrl
-        const branch = channelState.branch || "main"
+        const repoUrl = projectInfo.repoUrl
+        const branch = projectInfo.branch || "main"
         logAskStage("ask_starting_session", { channelId, repoUrl, branch })
         await startThreadSession(channelId, repoUrl, branch, {
           snapshotId: rawBaselineSnapshotId,
@@ -2242,7 +2245,7 @@ async function processAskInteraction(interaction: Interaction, prompt: string, o
           await sendFollowup(interaction.application_id, interaction.token, "Failed to start session for /ask.")
           return
         }
-        if (channelState.repoUrl) {
+        if (projectInfo.repoUrl) {
           await sendFollowup(
             interaction.application_id,
             interaction.token,
