@@ -41,11 +41,15 @@ describe("parseDiscordCommand", () => {
     expect(parsed.type).toBe("invalid")
   })
 
-  it("parses opencode and checkpoint commands", () => {
-    expect(parseDiscordCommand("opencode")).toEqual({ type: "opencode" })
-    expect(parseDiscordCommand("opencode anomalyco/opencode")).toEqual({
-      type: "opencode",
-      project: "anomalyco/opencode",
+  it("parses project and checkpoint commands", () => {
+    expect(parseDiscordCommand("project anomalyco/opencode")).toEqual({
+      type: "project",
+      repo: "anomalyco/opencode",
+    })
+    expect(parseDiscordCommand("project owner/repo mybranch")).toEqual({
+      type: "project",
+      repo: "owner/repo",
+      branch: "mybranch",
     })
     expect(parseDiscordCommand("checkpoint")).toEqual({ type: "checkpoint" })
     expect(parseDiscordCommand("delete")).toEqual({ type: "delete" })

@@ -266,14 +266,6 @@ export function handleDiscordCommand(
     }
   }
 
-  if (parsed.type === "opencode") {
-    return {
-      handled: true,
-      isPrompt: false,
-      message: parsed.project ? `opencode:start:${parsed.project}` : "opencode:start",
-    }
-  }
-
   return {
     handled: false,
     isPrompt: true,

@@ -1157,50 +1157,6 @@ async function processAuthConnectInteraction(interaction: Interaction, text: str
   }
 }
 
-async function handleProjectCommand(interaction: Interaction): Promise<Response> {
-  const { getGitHubClient } = await import("../../src/github-client.js")
-  const gh = getGitHubClient()
-  if (!gh) {
-    return json({
-      type: 4,
-      data: {
-        content: "GitHub is not configured. Set GITHUB_TOKEN to use project selection.",
-      },
-    })
-  }
-
-  try {
-    const repos = await gh.listRepos()
-    if (repos.length === 0) {
-      return json({ type: 4, data: { content: "No repositories found for your account." } })
-    }
-
-    const repoOptions = repos.map((r) => ({
-      label: r.name,
-      value: `${r.fullName.split("/")[0]}:${r.name}`,
-      description: r.defaultBranch,
-    }))
-
-    return json({
-      type: 4,
-      data: {
-        content: "Select a repository:",
-        components: [
-          {
-            type: 3,
-            custom_id: "project:repo",
-            options: repoOptions,
-            placeholder: "Choose a repository",
-          },
-        ],
-      },
-    })
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error"
-    return json({ type: 4, data: { content: `Failed to fetch repositories: ${message}` } })
-  }
-}
-
 function parseProjectInput(project: string): { project: string; repoUrl: string; branch: string } {
   const normalized = project.trim().replace(/^https?:\/\/github\.com\//, "").replace(/\.git$/, "")
   const [ownerRepo, branchHint] = normalized.split("#")
@@ -1295,136 +1251,48 @@ async function startThreadSession(
   }
 }
 
-async function handleOpencodeCommand(interaction: Interaction, projectInput?: string, prompt?: string): Promise<Response> {
+async function handleProjectCommand(interaction: Interaction, repoInput?: string, branch?: string): Promise<Response> {
   const channelId = interaction.channel_id
   const userId = getInteractionUserId(interaction)
   if (!channelId || !userId) {
     return json({ type: 4, data: { content: !channelId ? "Missing channel ID." : "Missing user ID." } })
   }
 
-  const inThread = await isThreadChannel(channelId)
-  if (inThread) {
-    return json({
-      type: 4,
-      data: {
-        content: "Run `/opencode` from a channel to start or resume a session.",
-      },
-    })
+  if (!repoInput) {
+    return json({ type: 4, data: { content: "Usage: /project <repo> [branch]" } })
   }
 
-  const [{ WorkspaceEntryStore }] = await Promise.all([
-    import("../../src/workspace-entry-store.js"),
-  ])
-
-  const workspaceStore = new WorkspaceEntryStore()
-
-  if (!projectInput) {
-    const rawBaselineSnapshotId = await ensureRawBaselineSnapshot()
-    const threadId = await createThreadFromChannel(channelId, "OpenCode Session")
-    if (!threadId) {
-      return json({ type: 4, data: { content: "Failed to create thread for /opencode." } })
-    }
-
-    await startThreadSession(threadId, undefined, "main", {
-      snapshotId: rawBaselineSnapshotId,
-      resetSessions: true,
-    })
-    await workspaceStore.setThreadBinding({
-      threadId,
-      userId,
-      updatedAt: Date.now(),
-    })
-
-    if (prompt) {
-      await executeQueuedAskRun({
-        interactionId: interaction.id,
-        applicationId: interaction.application_id,
-        token: interaction.token,
-        channelId: threadId,
-        userId,
-        prompt,
-      })
-    } else {
-      await sendFollowup(interaction.application_id, interaction.token, `<@${userId}> Your sandbox is ready! Use /ask in this thread to begin.`, undefined, threadId)
-    }
+  try {
+    const [{ ChannelStateStore }] = await Promise.all([
+      import("../../src/channel-state-store.js"),
+    ])
+    const parsed = parseProjectInput(repoInput)
+    const channelStateStore = new ChannelStateStore()
+    const effectiveBranch = branch || parsed.branch
+    channelStateStore.setProject(channelId, parsed.repoUrl, effectiveBranch, parsed.project)
 
     return json({
       type: 4,
       data: {
-        content: prompt
-          ? `Starting sandbox and processing your prompt in <#${threadId}>...`
-          : `Starting empty sandbox in <#${threadId}>. Use /ask in that thread to begin.`,
+        content: `Project set to **${parsed.project}**\n${parsed.repoUrl}\nBranch: ${effectiveBranch}\n\nRun /ask in this channel to start coding.`,
       },
     })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Invalid project format"
+    return json({ type: 4, data: { content: message } })
   }
-
-  const parsedProject = parseProjectInput(projectInput)
-  const threadId = await createThreadFromChannel(channelId, `OpenCode ${parsedProject.project}`)
-  if (!threadId) {
-    return json({ type: 4, data: { content: "Failed to create thread." } })
-  }
-
-  const rawBaselineSnapshotId = await ensureRawBaselineSnapshot()
-  console.log(`[handleOpencodeCommand] Starting thread session, threadId=${threadId}, repoUrl=${parsedProject.repoUrl}`)
-  await startThreadSession(threadId, parsedProject.repoUrl, parsedProject.branch, {
-    snapshotId: rawBaselineSnapshotId,
-    resetSessions: true,
-    cloneRepoOnSnapshot: true,
-  })
-  console.log(`[handleOpencodeCommand] Thread session started successfully, threadId=${threadId}`)
-  const entry = await workspaceStore.createEntry({
-    userId,
-    project: parsedProject.project,
-    repoUrl: parsedProject.repoUrl,
-    branch: parsedProject.branch,
-    name: `New session ${new Date().toISOString()}`,
-    threadId,
-  })
-  await workspaceStore.setThreadBinding({
-    threadId,
-    userId,
-    project: parsedProject.project,
-    workspaceEntryId: entry.id,
-    updatedAt: Date.now(),
-  })
-
-  if (prompt) {
-    await executeQueuedAskRun({
-      interactionId: interaction.id,
-      applicationId: interaction.application_id,
-      token: interaction.token,
-      channelId: threadId,
-      userId,
-      prompt,
-    })
-  } else {
-    await sendFollowup(interaction.application_id, interaction.token, `<@${userId}> Your sandbox is ready with the repository cloned! Use /ask in this thread to begin.`, undefined, threadId)
-  }
-
-  return json({
-    type: 4,
-    data: {
-      content: prompt
-        ? `Started session and processing your prompt in <#${threadId}>...`
-        : `Started a new session in <#${threadId}>.`,
-    },
-  })
 }
 
-async function processOpencodeCommandInteraction(interaction: Interaction, projectInput?: string, prompt?: string): Promise<void> {
+async function processProjectInteraction(interaction: Interaction, repo?: string, branch?: string): Promise<void> {
   try {
-    const response = await handleOpencodeCommand(interaction, projectInput, prompt)
+    const response = await handleProjectCommand(interaction, repo, branch)
     const raw = await response.text()
-    let content = "OpenCode session started."
-    let components: unknown[] | undefined
+    let content = "Project set."
 
     try {
-      const parsed = JSON.parse(raw) as { data?: { content?: string; components?: unknown[] } }
+      const parsed = JSON.parse(raw) as { data?: { content?: string } }
       if (parsed.data?.content) {
         content = parsed.data.content
-      }
-      if (Array.isArray(parsed.data?.components)) {
-        components = parsed.data.components
       }
     } catch {
       if (raw) {
@@ -1432,10 +1300,10 @@ async function processOpencodeCommandInteraction(interaction: Interaction, proje
       }
     }
 
-    await sendFollowup(interaction.application_id, interaction.token, content, components)
+    await sendFollowup(interaction.application_id, interaction.token, content)
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error"
-    await sendFollowup(interaction.application_id, interaction.token, `Failed to start opencode session: ${message}`)
+    await sendFollowup(interaction.application_id, interaction.token, `Failed to set project: ${message}`)
   }
 }
 
@@ -2293,8 +2161,9 @@ async function processAskInteraction(interaction: Interaction, prompt: string, o
       return
     }
 
-    const [{ ThreadRuntimeStore }] = await Promise.all([
+    const [{ ThreadRuntimeStore }, { ChannelStateStore }] = await Promise.all([
       import("../../src/thread-runtime-store.js"),
+      import("../../src/channel-state-store.js"),
     ])
 
     logAskStage("ask_start", {
@@ -2303,6 +2172,8 @@ async function processAskInteraction(interaction: Interaction, prompt: string, o
     })
 
     const runtimeStore = new ThreadRuntimeStore()
+    const channelStateStore = new ChannelStateStore()
+    const channelState = channelStateStore.get(channelId)
     let runtimeState = await runtimeStore.get(channelId)
 
     if (!runtimeState.sandboxId) {
@@ -2313,9 +2184,12 @@ async function processAskInteraction(interaction: Interaction, prompt: string, o
         await sendFollowup(interaction.application_id, interaction.token, "Failed to create thread for /ask.")
         return
       }
-      await startThreadSession(threadId, undefined, "main", {
+      const repoUrl = channelState.repoUrl
+      const branch = channelState.branch || "main"
+      await startThreadSession(threadId, repoUrl, branch, {
         snapshotId: rawBaselineSnapshotId,
         resetSessions: true,
+        cloneRepoOnSnapshot: true,
       })
       runtimeState = await runtimeStore.get(threadId)
       if (!runtimeState.sandboxId) {
@@ -2451,8 +2325,8 @@ export default async function handler(
       return
     }
 
-    if (parsed.type === "opencode") {
-      waitUntil(processOpencodeCommandInteraction(interaction, parsed.project, parsed.prompt))
+    if (parsed.type === "project") {
+      waitUntil(processProjectInteraction(interaction, parsed.repo, parsed.branch))
       await sendNodeResponse(res, json({ type: 5 }))
       return
     }

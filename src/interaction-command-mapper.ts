@@ -31,6 +31,14 @@ export function mapInteractionCommandToText(
       const prompt = optionValue(data, "prompt") || ""
       return { type: "prompt", text: prompt }
     }
+    case "project": {
+      const repo = optionValue(data, "repo") || ""
+      const branch = optionValue(data, "branch")
+      return {
+        type: "command",
+        text: branch ? `project ${repo} ${branch}` : `project ${repo}`,
+      }
+    }
     case "providers":
       return { type: "command", text: "providers" }
     case "config":

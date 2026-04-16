@@ -34,21 +34,21 @@ export function buildApplicationCommands(): DiscordApplicationCommand[] {
       ],
     },
     {
-      name: "opencode",
-      description: "Start a new OpenCode session",
+      name: "project",
+      description: "Set the GitHub repository for this channel",
       type: 1,
       options: [
         {
           type: 3,
-          name: "project",
-          description: "GitHub repo (owner/repo)",
+          name: "repo",
+          description: "GitHub repo (owner/repo or URL)",
           required: true,
           autocomplete: true,
         },
         {
           type: 3,
-          name: "prompt",
-          description: "Optional initial prompt to start the session",
+          name: "branch",
+          description: "Branch name (default: main)",
           required: false,
         },
       ],

@@ -22,26 +22,24 @@ Send a coding request to the agent.
 - Events stream to Discord as the agent works
 - Final response posted as followup
 
-### /opencode
+### /project
 
-Start a new OpenCode session, optionally with a GitHub project and initial prompt.
+Set the GitHub repository for this Discord channel. The repo will be cloned into any new sandbox created by `/ask`.
 
 ```
-/opencode                              # Start empty session
-/opencode owner/repo                    # Start with GitHub repo (e.g., anthropic/claude-code)
-/opencode Fix the login bug            # Start empty session and immediately process prompt
-/opencode owner/repo Add new feature   # Start with repo and immediately process prompt
+/project owner/repo                    # Set repo with default branch (main)
+/project owner/repo feature-branch     # Set repo with specific branch
+/project https://github.com/owner/repo # Also accepts full URLs
 ```
 
 **Options:**
-- `project` (required): GitHub repo in `owner/repo` format, with autocomplete
-- `prompt` (optional): Initial coding task to start the session immediately
+- `repo` (required): GitHub repo in `owner/repo` format or full URL, with autocomplete
+- `branch` (optional): Branch name (default: `main`)
 
 **Behavior:**
-- Creates or resumes a thread-bound session for this Discord channel
-- If project is provided, clones the repo into the sandbox
-- If prompt is provided, immediately processes it via `executeQueuedAskRun()`
-- Thread session persists across prompts until `/delete`
+- Stores repo and branch in `ChannelStateStore` for the channel
+- Repo persists across sessions until changed
+- Used by `/ask` when creating new sandboxes
 
 ### /providers
 
@@ -202,7 +200,7 @@ Save the current thread session state as a resumable checkpoint.
 
 **Behavior:**
 - Snapshots the current sandbox state
-- Enables fast resume on next `/opencode` or `/ask`
+- Enables fast resume on next `/ask`
 - Useful before ending a session or switching contexts
 
 ### /delete
