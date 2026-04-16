@@ -1,264 +1,180 @@
 # Discord Bridge
 
-A serverless Discord↔OpenCode bridge that lets you code from Discord using AI agents running in Vercel Sandboxes.
+A serverless Discord bot that bridges your Discord server to AI-powered coding agents running in Vercel Sandboxes. Code, debug, and ship directly from Discord.
 
-## What It Does
-
-```
-You (Discord)          →    /ask add a login feature
-                            ↓
-Vercel Functions       →    Verifies request, routes command
-                            ↓
-OpenCode Server        →    Runs in isolated sandbox
-(sandbox)              →    Executes your coding task
-                            ↓
-You (Discord)          ←    Streams results back
-```
-
-- **Slash commands** for session + coding workflows (`/opencode`, `/ask`, `/checkpoint`, etc.)
-- **Thread-bound sessions** - each working thread maps to one sandbox + one OpenCode session
-- **Real-time streaming** - watch the agent work as events arrive
-- **No always-on host** - fully serverless on Vercel
-
-## How Vercel Sandbox Works
-
-Vercel Sandboxes provide isolated, ephemeral environments for running code. When you interact with the Discord bridge, here's what happens:
+## How It Works
 
 ```
-1. /opencode in channel → create/select a working thread session
-2. Session restore/start → sandbox is resumed from snapshot baseline or project checkpoint
-3. OpenCode boots in sandbox → bridge connects via SDK
-4. /ask in thread → prompt is sent to the bound OpenCode session
-5. Streaming response → events and final result posted back to Discord
-6. /checkpoint (optional) → current sandbox is snapshotted for future resume
+You (Discord)             →    /project owner/repo
+                                ↓
+                            Sets repo for channel
+                                ↓
+You (Discord)             →    /ask fix the login bug
+                                ↓
+Vercel Functions          →    Creates thread + sandbox
+                                ↓
+OpenCode (sandbox)        →    Clones repo, runs your task
+                                ↓
+You (Discord)             ←    Streams results back
 ```
 
-**Key concepts:**
+- **Thread-bound sessions** — Each Discord thread maps to one sandbox + one OpenCode session
+- **Real-time streaming** — Watch the agent work as events arrive
+- **GitHub integration** — Clone any repo into an isolated sandbox
+- **Provider flexibility** — Use OpenAI, Anthropic, or any OpenCode-compatible provider
+- **Fully serverless** — No always-on host, runs on Vercel Functions
 
-- **Thread invariants** - One thread maps to one sandbox + one OpenCode session (+ one project entry when project mode is used).
-- **Cold starts** - If a sandbox is cold, expect a brief delay (5-30 seconds) while it initializes. Warm sandboxes respond instantly.
-- **Isolation** - Each sandbox is fully isolated with its own filesystem, environment, and processes. No cross-contamination between channels.
-- **Snapshot-driven continuity** - Raw baseline snapshots bootstrap fast starts; project snapshots power resume.
-- **Automatic lifecycle** - Vercel manages sandbox runtime lifecycle; the bridge persists session metadata in Blob.
+## Tech Stack
 
-## Quick Start
+| Layer | Technology |
+|-------|------------|
+| Hosting | Vercel Functions |
+| Compute | Vercel Sandboxes |
+| Persistence | Vercel Blob |
+| Discord | discord.js |
+| AI SDK | @opencode-ai/sdk |
+
+## Setup
 
 ### 1. Create a Discord Application
 
 1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
 2. Create a new application
-3. Get your **Public Key** and **Application ID**
-4. Go to "OAuth2 > URL Generator", select `bot` scope, add `Send Messages` permission
-5. Copy the generated URL and invite the bot to your server
+3. Copy your **Application ID** and **Public Key**
+4. Navigate to "OAuth2 > URL Generator"
+5. Select `bot` scope and add `Send Messages` permission
+6. Use the generated URL to invite the bot to your server
 
 ### 2. Deploy to Vercel
 
 ```bash
-# Clone and setup
 git clone <this-repo>
 cd discord-bridge
 pnpm install
 ```
 
-### 3. Create Vercel Blob Store
+### 3. Configure Environment Variables
 
-In the Vercel dashboard, add Blob to this project.
+Set these in your Vercel project dashboard or via CLI:
 
-That will provision Blob storage and inject:
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DISCORD_APPLICATION_ID` | Yes | Your Discord application ID |
+| `DISCORD_PUBLIC_KEY` | Yes | Discord public key (hex) |
+| `DISCORD_BOT_TOKEN` | Yes | Discord bot token |
+| `GITHUB_TOKEN` | Yes | GitHub PAT with `repo` and `read:user` scopes |
+| `BLOB_READ_WRITE_TOKEN` | Yes | Vercel Blob token |
+| `OPENAI_API_KEY` | No | For OpenAI provider |
+| `ANTHROPIC_API_KEY` | No | For Anthropic provider |
 
-```text
-BLOB_READ_WRITE_TOKEN
-```
-
-The bridge uses Blob for durable runtime metadata, including provider registry snapshots, thread/session bindings, and project workspace entries.
-
-### 4. Configure Environment Variables
-
-Set these in your Vercel project first. You can do that either in the Vercel dashboard or with `vercel env add`.
-
-These values live in Vercel and are used by the deployed app:
-
-| Variable | Description |
-|----------|-------------|
-| `DISCORD_APPLICATION_ID` | Your Discord app ID |
-| `DISCORD_PUBLIC_KEY` | Your Discord public key (hex) |
-| `DISCORD_BOT_TOKEN` | Your Discord bot token (needed for thread creation) |
-| `GITHUB_TOKEN` | GitHub personal access token (needs `repo`, `read:user` scopes) |
-| `BLOB_READ_WRITE_TOKEN` | Vercel Blob token for runtime/session/snapshot metadata |
-| `SESSION_BASE_DIR` | Optional session/config storage path. Recommended for serverless: `/tmp/opencode-chat-bridge` |
-
-**Provider API keys** (optional):
-- `OPENAI_API_KEY`
-- `ANTHROPIC_API_KEY`
-- `OPENCODE_API_KEY` (for opencode-go provider)
-- etc.
-
-**User config** (optional - your personal OpenCode settings like skills, agents, templates):
-- `OPENCODE_CONFIG_BLOB_PATH` (optional) Blob path for bundled OpenCode config (default: `opencode-config/config-bundle.json`)
-- Sync your full local config directory to Blob:
+### 4. Register Slash Commands
 
 ```bash
-pnpm tsx scripts/sync-config-to-blob.ts
-```
-
-This script uploads `~/.config/opencode` (excluding `node_modules` and `.git`) to private Vercel Blob.
-
-`BLOB_READ_WRITE_TOKEN` is required for durable provider registry, thread runtime state, and workspace/snapshot index data.
-
-**Serverless storage** (recommended on Vercel):
-- `SESSION_BASE_DIR=/tmp/opencode-chat-bridge`
-- This avoids sandbox/home-directory write issues for channel state, credentials, and recovery data
-
-After the env vars are set in Vercel, pull a local copy for scripts like `register-commands`:
-
-```bash
-# Link this folder to your Vercel project
 vercel link
-
-# Download Vercel env vars into .env.local for local scripts
 vercel env pull
-
-# Deploy the current code
-vercel deploy --prod
-```
-
-Notes:
-- Vercel env vars are the source of truth for the deployed app
-- `.env.local` is just a local copy used by scripts in this repo
-- `vercel env pull` does not set remote env vars, it only downloads them locally
-
-### 5. Register Slash Commands
-
-```bash
 pnpm tsx scripts/register-commands.ts
-# (uses .env.local values - run `vercel env pull` first to get them)
 ```
 
-### 6. Set Discord Interactions URL
+### 5. Set Discord Interactions URL
 
-In the Discord Developer Portal for your application, set:
+In the Discord Developer Portal, set your interactions endpoint:
 
-```text
+```
 https://your-vercel-domain.vercel.app/api/discord/interactions
 ```
 
-Example:
+Discord will verify this URL immediately. Ensure your code is deployed and the public key matches.
 
-```text
-https://discord-bridge-sigma.vercel.app/api/discord/interactions
+### 6. Configure Provider
+
+Run in Discord:
+
 ```
-
-Discord will verify this URL immediately, so make sure:
-- your latest code is deployed to Vercel
-- `DISCORD_PUBLIC_KEY` in Vercel matches the same Discord application
-- the URL uses HTTPS and points to `/api/discord/interactions`
-
-### 7. Initialize Provider Registry
-
-Run this once in Discord after the interactions URL is working:
-
-```text
 /update
-```
-
-This creates or refreshes the stored provider registry snapshot from `models.dev`.
-Run `/update` again any time you want the latest provider/model list.
-
-This requires Vercel Blob to be configured for the project.
-
-### 8. Set Default Provider And Model
-
-In any normal Discord channel, set your default provider and model:
-
-```text
 /use-provider openai
-/use-model gpt-5
-```
-
-Those defaults are stored in Blob per user.
-
-When you run commands inside a bridge thread, the thread starts from your global defaults and can override them independently.
-If you have not set global defaults yet, the thread will tell you to do that first.
-
-On each `/ask`, the bridge sends the resolved provider/model selection directly to OpenCode for that prompt.
-
-### 9. Start a Session in Discord
-
-In a normal channel (not a thread), start a session:
-
-```
-/opencode
-```
-
-Or start/resume project mode:
-
-```
-/opencode owner/repo
-```
-
-You can also attach a prompt directly to skip the `/ask` step:
-
-```
-/opencode Fix the login bug in auth.js
-/opencode owner/repo Add a new API endpoint for users
-```
-
-Then use `/ask` inside the created/linked thread if you didn't provide a prompt.
-
-Rules:
-- `/ask` works only in threads
-- `/opencode` works only in normal channels
-
-### 10. Set Provider Credentials
-
-**Option 1: API Keys (env vars)**
-```bash
-OPENAI_API_KEY=sk-...      # OpenAI
-ANTHROPIC_API_KEY=sk-ant-... # Anthropic
-# Format: {PROVIDER}_API_KEY (uppercase)
-```
-
-**Option 2: OAuth (e.g., ChatGPT Pro/Plus)**
-```bash
-/auth-connect openai
-# Follow the URL/code displayed in Discord
-# Run /auth-connect openai again after completing
+/use-model gpt-4o
 ```
 
 ## Commands
 
+### Session Management
+
 | Command | Description |
 |---------|-------------|
-| `/opencode [project] [prompt]` | Start empty session or pick resume/new for a project. Optional prompt immediately starts the session. |
-| `/ask <prompt>` | Send a coding request (thread only) |
-| `/checkpoint` | Snapshot current thread session for resume |
-| `/delete` | Stop and remove current thread session (no checkpoint) |
+| `/project <repo> [branch]` | Set GitHub repository for this channel |
+| `/ask <prompt>` | Send a coding request to the agent |
+| `/checkpoint` | Save current thread state for resume |
+| `/delete` | Stop and remove thread session |
+
+### Provider Configuration
+
+| Command | Description |
+|---------|-------------|
+| `/providers` | List available providers and auth status |
+| `/models [provider]` | List models for a provider |
+| `/use-provider <id>` | Set active provider |
+| `/use-model <id>` | Set active model |
+
+### Authentication
+
+| Command | Description |
+|---------|-------------|
+| `/auth-connect <provider>` | OAuth flow for providers |
+| `/auth-set-key <provider>` | Set API key for a provider |
+| `/auth-disconnect <provider>` | Remove provider credentials |
+
+### Utility
+
+| Command | Description |
+|---------|-------------|
+| `/config` | Show current provider, model, and auth status |
 | `/health-check` | Fast bridge health check |
-| `/update` | Refresh provider registry snapshot |
-| `/providers` | List available providers |
-| `/config` | Show current provider/model and auth status |
-| `/models [provider]` | List available models (provider autocomplete) |
-| `/use-provider <id>` | Set default provider, or override provider inside a thread |
-| `/use-model <id>` | Set default model, or override model inside a thread |
-| `/auth-connect <provider>` | OAuth flow for providers (e.g., openai) |
+| `/update` | Refresh provider registry from models.dev |
 
-Final `/ask` replies include a Discord embed footer with the model used, token usage, approximate context usage, and cost when OpenCode reports them.
+## Architecture
 
-`/update` also refreshes the raw baseline snapshot when stale (without invalidating existing project snapshots).
+### Thread Creation Flow
 
-## Pricing
-Everything is free out of the box if you use the Vercel hobby tier.
-It relies on whatever subscription / providers you have on OpenCode.
+1. `/project owner/repo` — Stores repo in `ChannelStateStore`
+2. `/ask` — Creates Discord thread + Vercel Sandbox
+3. Sandbox clones repo (if set) and boots OpenCode
+4. OpenCode executes the prompt and streams results back
 
-**Hobby**: Free (5 CPU-hours/month, non-commercial)
-**Pro**: $20/mo + usage (commercial)
+### State Management
+
+All persistent state lives in Vercel Blob:
+
+| Store | Path | Purpose |
+|-------|------|---------|
+| ThreadRuntimeStore | `runtime/threads/` | Sandbox ID, session ID, run locks |
+| WorkspaceEntryStore | `runtime/workspaces/` | Project metadata, thread bindings |
+| SelectionStore | `preferences/` | User default provider/model |
+| OAuthTokenStore | `oauth/` | Provider OAuth tokens |
+| ThreadAskQueueStore | `runtime/ask-queues/` | Pending `/ask` runs |
+
+Channel state (repo, branch) is stored on the local filesystem.
+
+### Sandbox Lifecycle
+
+- **Creation**: Sandbox is created from a baseline snapshot or resumed from a checkpoint
+- **Clone**: Git repo is cloned into `/vercel/sandbox` with GitHub token via `GIT_ASKPASS`
+- **Boot**: OpenCode server starts on port 4096 with user config injected from Blob
+- **Cleanup**: Thread deletion stops the sandbox without checkpointing
 
 ## Documentation
 
-- [Slash Commands](./docs/commands/slash-commands.md) - Command reference
-- [Auth Overview](./docs/auth/overview.md) - Credential management
-- [Vercel Blob CLI](./docs/vercel-blob-cli.md) - Blob storage reference
-- [Vercel Sandbox Research](./docs/research/vercel-sandbox/) - Sandbox deep dive
+- [Architecture Overview](./docs/OVERVIEW.md)
+- [Thread Creation Flow](./docs/thread-creation.md)
+- [Sandbox & Git Clone](./docs/sandbox-clone.md)
+- [State Stores](./docs/state-stores.md)
+- [Discord Messaging](./docs/messaging.md)
+
+## Development
+
+```bash
+pnpm test        # Run tests
+pnpm test:watch  # Watch mode
+```
 
 ## License
 
