@@ -34,25 +34,31 @@ function optionValue(data: InteractionCommandData, name: string): string | undef
   return String(option.value)
 }
 
-function extractAttachmentsFromOptions(options: InteractionOption[] | undefined): Array<{ url: string; filename: string; content_type?: string }> | undefined {
+function extractAttachmentsFromOptions(
+  options: InteractionOption[] | undefined,
+  allAttachments?: Array<{ id: string; filename: string; content_type?: string; url: string }>,
+): Array<{ url: string; filename: string; content_type?: string }> | undefined {
   if (!options) return undefined
 
-  const attachmentOptions = options.filter((opt) => opt.type === 11 && opt.attachments && opt.attachments.length > 0)
-  if (attachmentOptions.length === 0) return undefined
+  const allAtt: Array<{ url: string; filename: string; content_type?: string }> = []
 
-  const allAttachments: Array<{ url: string; filename: string; content_type?: string }> = []
-  for (const opt of attachmentOptions) {
-    if (opt.attachments) {
-      for (const att of opt.attachments) {
-        allAttachments.push({
-          url: att.url,
-          filename: att.filename,
-          content_type: att.content_type,
-        })
+  for (const opt of options) {
+    if (opt.type === 11) {
+      if (opt.attachments && opt.attachments.length > 0) {
+        for (const att of opt.attachments) {
+          allAtt.push({ url: att.url, filename: att.filename, content_type: att.content_type })
+        }
+      } else if (opt.value && allAttachments) {
+        const attachmentId = String(opt.value)
+        const matched = allAttachments.find((a) => a.id === attachmentId)
+        if (matched) {
+          allAtt.push({ url: matched.url, filename: matched.filename, content_type: matched.content_type })
+        }
       }
     }
   }
-  return allAttachments.length > 0 ? allAttachments : undefined
+
+  return allAtt.length > 0 ? allAtt : undefined
 }
 
 export function mapInteractionCommandToText(
@@ -82,7 +88,7 @@ export function mapInteractionCommandToText(
         attachmentsParam: attachments?.map((a) => ({ id: a.id, filename: a.filename, url: a.url, content_type: a.content_type })),
       })
 
-      const extractedFromOptions = extractAttachmentsFromOptions(data.options)
+      const extractedFromOptions = extractAttachmentsFromOptions(data.options, attachments)
       const images = extractedFromOptions ?? data.attachments ?? attachments?.filter((a) => a.url)
 
       if ((!images || images.length === 0) && attachments && attachments.length > 0) {
