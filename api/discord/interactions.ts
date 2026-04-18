@@ -2350,6 +2350,8 @@ async function processAskInteraction(
       ? `\n\nImages attached (analyze these files):\n${imagePaths.map((p) => `[Image: ${p}]`).join("\n")}`
       : ""
 
+    logAskStage("images_uploading_done", { imagePaths, imageCount: imagePaths.length })
+
     await executeQueuedAskRun({
       interactionId: interaction.id,
       applicationId: interaction.application_id,
