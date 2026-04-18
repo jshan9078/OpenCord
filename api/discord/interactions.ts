@@ -59,6 +59,12 @@ type Interaction = {
       focused?: boolean
       options?: Array<{ name: string; type: number; value?: string | number | boolean; focused?: boolean }>
     }>
+    attachments?: Array<{
+      id: string
+      filename: string
+      content_type?: string
+      url: string
+    }>
   }
 }
 
@@ -2158,7 +2164,12 @@ async function executeQueuedAskRun(run: AskQueueRunRequest): Promise<void> {
   }
 }
 
-async function processAskInteraction(interaction: Interaction, prompt: string, origin?: string): Promise<void> {
+async function processAskInteraction(
+  interaction: Interaction,
+  prompt: string,
+  origin?: string,
+  imageAttachments?: Array<{ url: string; filename: string; content_type?: string }>,
+): Promise<void> {
   try {
     let channelId = interaction.channel_id
     const userId = getInteractionUserId(interaction)
@@ -2274,10 +2285,10 @@ async function processAskInteraction(interaction: Interaction, prompt: string, o
     logAskStage("ask_executing", { threadId: channelId, interactionId: interaction.id })
 
     const imagePaths: string[] = []
-    const attachments = interaction.message?.attachments ?? []
-    const imageAttachments = attachments.filter((a: { content_type?: string }) => a.content_type?.startsWith("image/"))
+    const effectiveAttachments = imageAttachments ?? []
+    const validImageAttachments = effectiveAttachments.filter((a: { content_type?: string }) => a.content_type?.startsWith("image/"))
 
-    if (imageAttachments.length > 0 && runtimeState.sandboxName) {
+    if (validImageAttachments.length > 0 && runtimeState.sandboxName) {
       const { getSandboxManager } = await import("../../src/sandbox-manager.js")
 
       const sandboxManager = getSandboxManager()
@@ -2296,8 +2307,8 @@ async function processAskInteraction(interaction: Interaction, prompt: string, o
       }
 
       if (sandboxContext) {
-        for (let i = 0; i < imageAttachments.length; i++) {
-          const attachment = imageAttachments[i]
+        for (let i = 0; i < validImageAttachments.length; i++) {
+          const attachment = validImageAttachments[i]
           const targetPath = `/vercel/sandbox/images/${Date.now()}-${i}-${attachment.filename.replace(/[^a-zA-Z0-9._-]/g, "_")}.webp`
 
           try {
@@ -2442,7 +2453,8 @@ export default async function handler(
     const parsed = parseDiscordCommand(mapped.text)
 
     if (mapped.type === "prompt") {
-      waitUntil(processAskInteraction(interaction, mapped.text, origin))
+      const imageAttachments = mapped.attachments ?? interaction.data.attachments ?? []
+      waitUntil(processAskInteraction(interaction, mapped.text, origin, imageAttachments))
       await sendNodeResponse(res, json({ type: 5 }))
       return
     }

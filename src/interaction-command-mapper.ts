@@ -7,11 +7,23 @@ interface InteractionOption {
   type: number
   value?: string | number | boolean
   options?: InteractionOption[]
+  attachments?: Array<{
+    id: string
+    filename: string
+    content_type?: string
+    url: string
+  }>
 }
 
 interface InteractionCommandData {
   name: string
   options?: InteractionOption[]
+  attachments?: Array<{
+    id: string
+    filename: string
+    content_type?: string
+    url: string
+  }>
 }
 
 function optionValue(data: InteractionCommandData, name: string): string | undefined {
@@ -24,12 +36,13 @@ function optionValue(data: InteractionCommandData, name: string): string | undef
 
 export function mapInteractionCommandToText(
   data: InteractionCommandData,
-): { type: "command" | "prompt"; text: string } {
+): { type: "command" | "prompt"; text: string; attachments?: Array<{ url: string; filename: string; content_type?: string }> } {
   const commandName = data.name
   switch (commandName) {
     case "ask": {
       const prompt = optionValue(data, "prompt") || ""
-      return { type: "prompt", text: prompt }
+      const images = data.attachments
+      return { type: "prompt", text: prompt, attachments: images }
     }
     case "project": {
       const repo = optionValue(data, "repo") || ""

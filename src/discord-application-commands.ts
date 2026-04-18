@@ -31,6 +31,12 @@ export function buildApplicationCommands(): DiscordApplicationCommand[] {
           description: "What should the agent do?",
           required: true,
         },
+        {
+          type: 11,
+          name: "images",
+          description: "Images for the agent to analyze",
+          required: false,
+        },
       ],
     },
     {
