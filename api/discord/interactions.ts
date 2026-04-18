@@ -2462,6 +2462,9 @@ export default async function handler(
       mappedAttachmentsCount: mapped.attachments?.length ?? 0,
       mappedAttachments: mapped.attachments?.map((a) => ({ url: a.url, filename: a.filename })),
       interactionDataAttachmentsCount: interaction.data.attachments?.length ?? 0,
+      interactionDataAttachments: interaction.data.attachments?.map((a) => ({ id: a.id, filename: a.filename, url: a.url })),
+      interactionMessageAttachmentsCount: interaction.message?.attachments?.length ?? 0,
+      interactionMessageAttachments: interaction.message?.attachments?.map((a) => ({ id: a.id, filename: a.filename, url: a.url })),
     })
     const parsed = parseDiscordCommand(mapped.text)
 
