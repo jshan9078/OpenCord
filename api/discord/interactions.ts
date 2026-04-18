@@ -2472,16 +2472,10 @@ export default async function handler(
     const parsed = parseDiscordCommand(mapped.text)
 
     if (mapped.type === "prompt") {
-      let imageAttachments: Array<{ url: string; filename: string; content_type?: string }> = []
+      let imageAttachments = mapped.attachments ?? []
 
-      const attachmentOption = interaction.data.options?.find((o) => o.name === "images" && o.type === 11)
-      if (attachmentOption?.value && interaction.channel_id && interaction.message?.id) {
+      if (imageAttachments.length === 0 && interaction.channel_id && interaction.message?.id) {
         try {
-          console.info("Fetching message", {
-            channelId: interaction.channel_id,
-            messageId: interaction.message.id,
-            attachmentId: String(attachmentOption.value)
-          })
           const messageResponse = await fetch(
             `https://discord.com/api/v10/channels/${interaction.channel_id}/messages/${interaction.message.id}`,
             {
@@ -2491,10 +2485,8 @@ export default async function handler(
               },
             },
           )
-          console.info("Message fetch response status", { status: messageResponse.status, ok: messageResponse.ok })
           if (messageResponse.ok) {
             const messageData = await messageResponse.json()
-            console.info("Message data attachments", { attachments: messageData.attachments })
             if (messageData.attachments && messageData.attachments.length > 0) {
               imageAttachments = messageData.attachments.map((a: { id: string; filename: string; content_type?: string; url: string }) => ({
                 url: a.url,
@@ -2502,20 +2494,10 @@ export default async function handler(
                 content_type: a.content_type,
               }))
             }
-          } else {
-            const errorText = await messageResponse.text()
-            console.error("Message fetch failed", { status: messageResponse.status, error: errorText })
           }
         } catch (error) {
           console.error("Failed to fetch message for attachments:", error)
         }
-      } else {
-        console.info("Skipping attachment fetch", {
-          hasAttachmentOption: Boolean(attachmentOption?.value),
-          channelId: interaction.channel_id,
-          messageId: interaction.message?.id,
-          attachmentId: attachmentOption?.value ? String(attachmentOption.value) : undefined
-        })
       }
 
       waitUntil(processAskInteraction(interaction, mapped.text, origin, imageAttachments))
