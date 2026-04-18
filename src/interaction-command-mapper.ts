@@ -62,7 +62,16 @@ export function mapInteractionCommandToText(
   switch (commandName) {
     case "ask": {
       const prompt = optionValue(data, "prompt") || ""
+      console.info("mapInteractionCommandToText /ask raw data", {
+        hasOptions: Boolean(data.options),
+        optionsCount: data.options?.length ?? 0,
+        optionsDetails: data.options?.map((o) => ({ name: o.name, type: o.type, value: o.value, hasAttachments: Boolean(o.attachments), attachmentsCount: o.attachments?.length ?? 0, attachments: o.attachments?.map((a) => ({ id: a.id, filename: a.filename, url: a.url, content_type: a.content_type })) })),
+        hasDataAttachments: Boolean(data.attachments),
+        dataAttachmentsCount: data.attachments?.length ?? 0,
+        dataAttachments: data.attachments?.map((a) => ({ id: a.id, filename: a.filename, url: a.url, content_type: a.content_type })),
+      })
       const images = extractAttachmentsFromOptions(data.options) ?? data.attachments
+      console.info("mapInteractionCommandToText /ask extracted images", { images: images?.map((i) => ({ url: i.url, filename: i.filename })) })
       return { type: "prompt", text: prompt, attachments: images }
     }
     case "project": {

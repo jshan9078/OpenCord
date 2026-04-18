@@ -2170,6 +2170,11 @@ async function processAskInteraction(
   origin?: string,
   imageAttachments?: Array<{ url: string; filename: string; content_type?: string }>,
 ): Promise<void> {
+  console.info("processAskInteraction called", {
+    hasImageAttachments: Boolean(imageAttachments),
+    imageAttachmentsCount: imageAttachments?.length ?? 0,
+    imageAttachments: imageAttachments?.map((a) => ({ url: a.url, filename: a.filename, content_type: a.content_type })),
+  })
   try {
     let channelId = interaction.channel_id
     const userId = getInteractionUserId(interaction)
@@ -2450,6 +2455,14 @@ export default async function handler(
     ])
 
     const mapped = mapInteractionCommandToText(interaction.data)
+    console.info("After mapInteractionCommandToText", {
+      type: mapped.type,
+      textLength: mapped.text.length,
+      textPreview: mapped.text.slice(0, 100),
+      mappedAttachmentsCount: mapped.attachments?.length ?? 0,
+      mappedAttachments: mapped.attachments?.map((a) => ({ url: a.url, filename: a.filename })),
+      interactionDataAttachmentsCount: interaction.data.attachments?.length ?? 0,
+    })
     const parsed = parseDiscordCommand(mapped.text)
 
     if (mapped.type === "prompt") {
