@@ -2455,16 +2455,11 @@ export default async function handler(
     ])
 
     const mapped = mapInteractionCommandToText(interaction.data, interaction.data.attachments)
-    console.info("After mapInteractionCommandToText", {
-      type: mapped.type,
-      textLength: mapped.text.length,
-      textPreview: mapped.text.slice(0, 100),
-      mappedAttachmentsCount: mapped.attachments?.length ?? 0,
-      mappedAttachments: mapped.attachments?.map((a) => ({ url: a.url, filename: a.filename })),
-      interactionDataAttachmentsCount: interaction.data.attachments?.length ?? 0,
-      interactionDataAttachments: interaction.data.attachments?.map((a) => ({ id: a.id, filename: a.filename, url: a.url })),
-      interactionMessageAttachmentsCount: interaction.message?.attachments?.length ?? 0,
-      interactionMessageAttachments: interaction.message?.attachments?.map((a) => ({ id: a.id, filename: a.filename, url: a.url })),
+    console.info("Full interaction", {
+      type: interaction.type,
+      messageAttachments: interaction.message?.attachments,
+      dataAttachments: interaction.data.attachments,
+      dataOptions: interaction.data.options,
     })
     const parsed = parseDiscordCommand(mapped.text)
 
