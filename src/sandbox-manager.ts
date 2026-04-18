@@ -912,9 +912,21 @@ export class SandboxManager {
       throw new Error("No sandbox context found for channel")
     }
 
+    console.info("uploadImage", { channelId, targetPath, sandboxName: context.name, bufferSize: imageBuffer.length })
+
     const sandbox = await Sandbox.get({ name: context.name } as unknown as Parameters<typeof Sandbox.get>[0])
+    await sandbox.runCommand({
+      cmd: "bash",
+      args: ["-lc", `mkdir -p /vercel/sandbox/images && ls -la /vercel/sandbox/`],
+    })
     await sandbox.writeFiles([{ path: targetPath, content: imageBuffer }])
     console.log(`[SandboxManager] Uploaded image to ${targetPath}, size=${imageBuffer.length}`)
+
+    const verifyResult = await sandbox.runCommand({
+      cmd: "bash",
+      args: ["-lc", `ls -la ${targetPath}`],
+    })
+    console.info("uploadImage verify", { targetPath, exitCode: verifyResult.exitCode, stdout: await verifyResult.stdout() })
   }
 
   async stop(channelId: string, sandboxNameFromState?: string): Promise<void> {
