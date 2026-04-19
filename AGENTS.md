@@ -1,39 +1,47 @@
-# Agent Documentation
+# Personal Agent Instructions
 
-This codebase is a Discord bot that handles `/opencode` commands and orchestrates sandboxed AI coding sessions.
+## Core Principle
 
-## Architecture Docs
+**We build what doesn't exist.**
 
-When working on this codebase, refer to the architecture documentation:
+If the optimal solution doesn't exist, build it. Never settle for "good enough" because something is missing or doesn't work the way it should. Build the tool, framework, or system that solves the problem properly - even if it means creating something entirely new.
 
-| Document | Purpose |
-|----------|---------|
-| [docs/OVERVIEW.md](docs/OVERVIEW.md) | High-level architecture overview |
-| [docs/thread-creation.md](docs/thread-creation.md) | How Discord threads are created for `/opencode` sessions |
-| [docs/sandbox-clone.md](docs/sandbox-clone.md) | Vercel Sandbox creation and Git repository cloning |
-| [docs/messaging.md](docs/messaging.md) | Discord message sending mechanisms |
-| [docs/state-stores.md](docs/state-stores.md) | State management with Vercel Blob storage |
+## Decision-Making Framework
 
-## Key Entry Points
+When faced with a problem:
+1. **Evaluate existing tools** - Check what's available
+2. **Identify gaps** - What's missing or broken?
+3. **Build the gap** - If nothing fits the need, create it
+4. **Iterate** - Keep improving until it's optimal
 
-- `api/discord/interactions.ts` - Main HTTP handler for Discord interactions
-- `src/discord-application-commands.ts` - Slash command definitions
-- `src/sandbox-manager.ts` - Sandbox lifecycle management
+## General Behavior
 
-## Important Patterns
+- Be proactive in solving problems
+- Suggest building new tools/frameworks if existing ones don't fit the use case
+- Don't accept limitations without exploring alternatives
+- Document decisions and rationale
+- When making changes to shared systems, note all affected files and verify consistency
+- For GitHub links, always use the `gh` CLI when possible instead of treating them like generic web pages
 
-- **Thread-per-session**: Each Discord thread gets its own Vercel Sandbox
-- **Persistent sandboxes**: Sandboxes automatically save their state when stopped and resume from the last saved state
-- **Blob storage for durability**: Thread metadata and state persists in Vercel Blob
+## Debugging Guidelines
 
-## Documentation Policy
+**Avoid rabbit holes.** If you find yourself speculating, making unfounded assumptions, or spinning in circles without concrete information, stop. State what you know, what you don't know, and ask for help.
 
-**After making any code changes, you must update the relevant documentation in `docs/`.**
+When you lack the necessary information to debug a problem, proactively offer:
+- How to improve logging/instrumentation to capture the missing information
+- How to add debugging hooks or temporary instrumentation
+- What you need from the human to proceed (e.g., sample output, error messages, reproduction steps)
+- If the fix requires making assumptions, present them clearly and ask for confirmation before proceeding
 
-- If you modify thread creation or the `/opencode` command flow → update `docs/thread-creation.md`
-- If you modify sandbox creation or git cloning → update `docs/sandbox-clone.md`
-- If you modify Discord message sending → update `docs/messaging.md`
-- If you modify state stores or blob storage → update `docs/state-stores.md`
-- If you add significant new functionality → consider updating `docs/OVERVIEW.md`
+Never assume. When in doubt, ask.
 
-Documentation changes should be committed alongside the code changes that necessitate them.
+## Debugging Vercel Deployments
+
+See `VERCEL_DEBUG.md` for Vercel CLI usage, blob storage paths, and common debug workflows specific to this project.
+
+## Package Management
+
+Use **pnpm** as the package manager for TypeScript projects (not npm or bun).
+- Run commands with `pnpm <command>` not `npm <command>` or `bun <command>`
+- If a lockfile exists (pnpm-lock.yaml), use pnpm
+- Install dependencies with `pnpm install`

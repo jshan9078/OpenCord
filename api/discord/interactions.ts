@@ -1243,14 +1243,28 @@ async function startThreadSession(
   const runtimeStore = new ThreadRuntimeStore()
   const channelStateStore = new ChannelStateStore()
 
-  const context = options?.snapshotId
-    ? await sandboxManager.createFromSnapshot(
-      threadId,
-      options.snapshotId,
-      options.cloneRepoOnSnapshot ? repoUrl : undefined,
-      branch,
-    )
-    : await sandboxManager.getOrCreate(threadId, undefined, repoUrl, branch)
+  let context
+  if (options?.snapshotId) {
+    try {
+      context = await sandboxManager.createFromSnapshot(
+        threadId,
+        options.snapshotId,
+        options.cloneRepoOnSnapshot ? repoUrl : undefined,
+        branch,
+      )
+    } catch (error) {
+      console.log(`[startThreadSession] Snapshot ${options.snapshotId} failed, creating fresh baseline`)
+      const newSnapshotId = await refreshRawBaselineSnapshot()
+      context = await sandboxManager.createFromSnapshot(
+        threadId,
+        newSnapshotId,
+        options.cloneRepoOnSnapshot ? repoUrl : undefined,
+        branch,
+      )
+    }
+  } else {
+    context = await sandboxManager.getOrCreate(threadId, undefined, repoUrl, branch)
+  }
 
   await runtimeStore.setSandbox(threadId, context.name, context.opencodePassword, {
     clearSession: options?.resetSessions !== false,

@@ -8,8 +8,15 @@ import { homedir } from "os";
 
 dotenv.config({ path: ".env.local" });
 
-const CONFIG_DIR = join(homedir(), ".config", "opencode");
+const OPENCODE_CONFIG_DIR = join(homedir(), ".config", "opencode");
+const PI_AGENT_DIR = join(homedir(), ".pi", "agent");
 const DEFAULT_BLOB_PATH = "opencode-config/config-bundle.json";
+
+interface SourceConfig {
+  dir: string;
+  label: string;
+  priority: number;
+}
 function buildGithubPolicyBlock(defaultLogin?: string): string {
   const lines = [
     "## CRITICAL - MUST READ BEFORE DOING ANYTHING: GitHub CLI Policy",
@@ -152,9 +159,9 @@ async function resolveGithubLoginFromToken(): Promise<string | undefined> {
 async function readDirRecursive(
   dir: string,
   baseDir: string,
+  skipDirs: Set<string> = new Set(["node_modules", ".git"]),
 ): Promise<Map<string, string>> {
   const files = new Map<string, string>();
-  const skipDirs = new Set(["node_modules", ".git"]);
 
   const entries = await readdir(dir, { withFileTypes: true });
   for (const entry of entries) {
@@ -165,7 +172,7 @@ async function readDirRecursive(
       if (skipDirs.has(entry.name)) {
         continue;
       }
-      const nested = await readDirRecursive(fullPath, baseDir);
+      const nested = await readDirRecursive(fullPath, baseDir, skipDirs);
       for (const [k, v] of nested) {
         files.set(k, v);
       }
@@ -183,6 +190,65 @@ async function readDirRecursive(
   return files;
 }
 
+async function loadSourceConfigs(): Promise<SourceConfig[]> {
+  const sources: SourceConfig[] = [];
+
+  try {
+    await stat(OPENCODE_CONFIG_DIR);
+    sources.push({
+      dir: OPENCODE_CONFIG_DIR,
+      label: "opencode",
+      priority: 1,
+    });
+  } catch {
+    // opencode config directory does not exist
+  }
+
+  try {
+    await stat(PI_AGENT_DIR);
+    sources.push({
+      dir: PI_AGENT_DIR,
+      label: "pi-agent",
+      priority: 2,
+    });
+  } catch {
+    // pi agent directory does not exist
+  }
+
+  return sources.sort((a, b) => a.priority - b.priority);
+}
+
+function normalizeSkillPath(relativePath: string): string | null {
+  const match = relativePath.match(/^skills\/([^/]+)\/(.+)$/);
+  if (!match) {
+    return null;
+  }
+  const skillName = match[1];
+  const fileName = match[2];
+  return `skills/${skillName}/${fileName}`;
+}
+
+function shouldOverrideExisting(
+  existingSource: string | undefined,
+  newSource: string,
+  relativePath: string,
+): boolean {
+  if (!existingSource) {
+    return true;
+  }
+
+  if (relativePath === "AGENTS.md") {
+    return false;
+  }
+
+  const normalized = normalizeSkillPath(relativePath);
+  if (normalized) {
+    return false;
+  }
+
+  return true;
+}
+
 async function main(): Promise<void> {
   const token = process.env.BLOB_READ_WRITE_TOKEN;
   if (!token) {
@@ -191,30 +257,52 @@ async function main(): Promise<void> {
     );
   }
 
-  await stat(CONFIG_DIR);
+  const sources = await loadSourceConfigs();
+  if (sources.length === 0) {
+    throw new Error(
+      "No configuration directories found. Need ~/.config/opencode or ~/.pi/agent",
+    );
+  }
 
-  const files = await readDirRecursive(CONFIG_DIR, CONFIG_DIR);
   const payloadFiles: Record<string, string> = {};
+  const fileSources: Record<string, string> = {};
   let foundMainConfig = false;
   let foundAgentsFile = false;
   const defaultGithubLogin = await resolveGithubLoginFromToken();
 
-  for (const [relativePath, content] of files) {
-    if (relativePath === "AGENTS.md") {
-      foundAgentsFile = true;
-      payloadFiles[relativePath] = upsertAgentsPolicies(
-        content,
-        defaultGithubLogin,
-      );
-    } else if (
-      relativePath.endsWith("opencode.json") ||
-      relativePath.endsWith("opencode.jsonc")
-    ) {
-      foundMainConfig = true;
-      const sanitized = sanitizeOpenCodeConfigContent(content);
-      payloadFiles[relativePath] = ensurePermissionAllow(sanitized);
-    } else {
-      payloadFiles[relativePath] = content;
+  for (const source of sources) {
+    const skipDirs =
+      source.label === "pi-agent"
+        ? new Set(["node_modules", ".git", "sessions", "bin"])
+        : new Set(["node_modules", ".git"]);
+
+    const files = await readDirRecursive(source.dir, source.dir, skipDirs);
+
+    for (const [relativePath, content] of files) {
+      const existingSource = fileSources[relativePath];
+
+      if (!shouldOverrideExisting(existingSource, source.label, relativePath)) {
+        continue;
+      }
+
+      fileSources[relativePath] = source.label;
+
+      if (relativePath === "AGENTS.md") {
+        foundAgentsFile = true;
+        payloadFiles[relativePath] = upsertAgentsPolicies(
+          content,
+          defaultGithubLogin,
+        );
+      } else if (
+        relativePath.endsWith("opencode.json") ||
+        relativePath.endsWith("opencode.jsonc")
+      ) {
+        foundMainConfig = true;
+        const sanitized = sanitizeOpenCodeConfigContent(content);
+        payloadFiles[relativePath] = ensurePermissionAllow(sanitized);
+      } else {
+        payloadFiles[relativePath] = content;
+      }
     }
   }
 
@@ -235,8 +323,11 @@ async function main(): Promise<void> {
   });
 
   console.log(
-    `Synced ${Object.keys(payloadFiles).length} config files to Blob path: ${path}`,
+    `Synced ${Object.keys(payloadFiles).length} config files from ${sources.length} source(s) to Blob path: ${path}`,
   );
+  for (const [filePath, sourceLabel] of Object.entries(fileSources)) {
+    console.log(`  - ${filePath} (${sourceLabel})`);
+  }
 }
 
 main().catch((error) => {

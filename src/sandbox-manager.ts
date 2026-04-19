@@ -173,16 +173,18 @@ export class SandboxManager {
   }
 
   async createRawBaselineSnapshot(channelId: string, expirationMs?: number): Promise<{ snapshotId: string }> {
-    const sandbox = await this.createSandbox(channelId)
+    const uniqueId = `${channelId}-${Date.now()}`
+    const sandbox = await this.createSandbox(uniqueId)
     await this.ensureOpenCodeInstalled(sandbox)
     await this.ensureGitHubCliInstalled(sandbox)
+    await this.ensureUvInstalled(sandbox)
     await this.injectUserConfig(sandbox)
     const snapshot = await sandbox.snapshot(
       expirationMs !== undefined
         ? { expiration: expirationMs }
-        : undefined,
+        : { expiration: 0 },
     )
-    this.cache.delete(channelId)
+    this.cache.delete(uniqueId)
     return { snapshotId: snapshot.snapshotId }
   }
 
@@ -443,6 +445,41 @@ export class SandboxManager {
       throw new Error("OpenCode executable path could not be resolved")
     }
     return path
+  }
+
+  private async ensureUvInstalled(sandbox: Sandbox): Promise<void> {
+    const checkResult = await sandbox.runCommand({
+      cmd: "bash",
+      args: ["-lc", "command -v uv >/dev/null 2>&1 || [ -x \"$HOME/.local/bin/uv\" ]"],
+    }).catch(() => ({ exitCode: 1 }))
+
+    if (checkResult.exitCode === 0) {
+      console.log("[SandboxManager] uv already installed")
+      return
+    }
+
+    console.log("[SandboxManager] Installing uv")
+    const installResult = await sandbox.runCommand({
+      cmd: "bash",
+      args: ["-lc", "curl -LsSf https://astral.sh/uv/install.sh | sh"],
+    })
+
+    const stdout = await installResult.stdout()
+    const stderr = await installResult.stderr()
+    if (installResult.exitCode !== 0) {
+      throw new Error(`uv installation failed: ${stderr || stdout}`)
+    }
+
+    const verifyResult = await sandbox.runCommand({
+      cmd: "bash",
+      args: ["-lc", "command -v uv >/dev/null 2>&1 || [ -x \"$HOME/.local/bin/uv\" ]"],
+    }).catch(() => ({ exitCode: 1 }))
+
+    if (verifyResult.exitCode !== 0) {
+      throw new Error("uv installation completed but executable not found")
+    }
+
+    console.log("[SandboxManager] uv installed successfully")
   }
 
   private async ensureGitHubCliInstalled(sandbox: Sandbox): Promise<void> {
