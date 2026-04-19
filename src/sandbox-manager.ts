@@ -178,6 +178,7 @@ export class SandboxManager {
     await this.ensureOpenCodeInstalled(sandbox)
     await this.ensureGitHubCliInstalled(sandbox)
     await this.ensureUvInstalled(sandbox)
+    await this.ensurePython313Installed(sandbox)
     await this.injectUserConfig(sandbox)
     const snapshot = await sandbox.snapshot(
       expirationMs !== undefined
@@ -480,6 +481,38 @@ export class SandboxManager {
     }
 
     console.log("[SandboxManager] uv installed successfully")
+  }
+
+  private async ensurePython313Installed(sandbox: Sandbox): Promise<void> {
+    const checkResult = await sandbox.runCommand({
+      cmd: "bash",
+      args: ["-lc", "python3.13 --version 2>&1 | grep -q 'Python 3.13'"],
+    }).catch(() => ({ exitCode: 1 }))
+
+    if (checkResult.exitCode === 0) {
+      console.log("[SandboxManager] Python 3.13 already installed")
+      return
+    }
+
+    console.log("[SandboxManager] Installing Python 3.13")
+    const installResult = await sandbox.runCommand({
+      cmd: "sudo",
+      args: ["dnf", "install", "-y", "python3.13"],
+    })
+
+    const stdout = await installResult.stdout()
+    const stderr = await installResult.stderr()
+    if (installResult.exitCode !== 0) {
+      throw new Error(`Python 3.13 installation failed: ${stderr || stdout}`)
+    }
+
+    const verifyResult = await sandbox.runCommand({
+      cmd: "bash",
+      args: ["-lc", "python3.13 --version"],
+    })
+
+    const version = await verifyResult.stdout()
+    console.log(`[SandboxManager] Python 3.13 installed: ${version.trim()}`)
   }
 
   private async ensureGitHubCliInstalled(sandbox: Sandbox): Promise<void> {
