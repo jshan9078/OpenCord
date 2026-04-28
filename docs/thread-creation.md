@@ -48,31 +48,22 @@ When `/ask` is run in a channel:
 
 ## Flow Diagram
 
-```
-User runs /project owner/repo in channel
-    |
-    v
-handleProjectCommand() --> Stores repo in ChannelStateStore
+```mermaid
+flowchart TD
+  A["User runs /project owner/repo in channel"] --> B["handleProjectCommand()"]
+  B --> C["Stores repo in ChannelStateStore"]
 
-User runs /ask fix the login bug in channel
-    |
-    v
-processAskInteraction()
-    |
-    v
-createThreadFromChannel() --> Creates Discord thread
-    |
-    v
-startThreadSession() --> Reads repo from ChannelStateStore
-    |
-    v
-SandboxManager.createFromSnapshot() --> Creates Vercel Sandbox from raw baseline
-    |
-    v
-cloneRepoIntoSandbox() --> Clones GitHub repo into sandbox
-    |
-    v
-executeQueuedAskRun() --> Streams response to thread
+  D["User runs /ask fix the login bug in channel"] --> E["processAskInteraction()"]
+  E --> F["createThreadFromChannel()"]
+  F --> G["Creates Discord thread"]
+  E --> H["startThreadSession()"]
+  H --> I["Reads repo from ChannelStateStore"]
+  H --> J["SandboxManager.createFromSnapshot()"]
+  J --> K["Creates Vercel Sandbox from raw baseline"]
+  H --> L["cloneRepoIntoSandbox()"]
+  L --> M["Clones GitHub repo into sandbox"]
+  E --> N["executeQueuedAskRun()"]
+  N --> O["Streams response to thread"]
 ```
 
 ## No Empty Sandbox Mode

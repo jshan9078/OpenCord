@@ -4,6 +4,7 @@ node_modules/
 # Build
 dist/
 .vercel/
+.obsidian/
 
 # Local env
 .env
